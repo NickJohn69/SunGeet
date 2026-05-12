@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Search as SearchIcon, Play, Plus, Loader2 } from 'lucide-react';
+import { Search as SearchIcon, Play, Pause, Loader2 } from 'lucide-react';
 import useStore from '../store/useStore';
 
 export default function Search() {
@@ -9,12 +9,12 @@ export default function Search() {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
-  const { setCurrentSong, addToPlaylist } = useStore();
+  const { setCurrentSong, currentSong, isPlaying, setIsPlaying } = useStore();
 
   const handleSearch = async (e) => {
     e.preventDefault();
     if (!query.trim()) return;
-    
+
     setLoading(true);
     setHasSearched(true);
     try {
@@ -28,89 +28,59 @@ export default function Search() {
     }
   };
 
+  const playSong = (song) => {
+    if (currentSong?.id === song.id) {
+      setIsPlaying(!isPlaying);
+    } else {
+      setCurrentSong(song);
+    }
+  };
+
   return (
-    <div className="w-full max-w-5xl mx-auto py-8 px-4">
-      <form onSubmit={handleSearch} className="relative mb-8 max-w-2xl mx-auto">
-        <div className="relative group">
-          <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-muted-foreground group-focus-within:text-primary transition-colors">
-            <SearchIcon size={20} />
-          </div>
+    <div className="px-6 pt-4 pb-6">
+      <form onSubmit={handleSearch}>
+        <div className="relative max-w-md">
+          <SearchIcon size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#b3b3b3]" />
           <input
             type="text"
-            className="block w-full pl-12 pr-4 py-4 rounded-full bg-background border-2 border-border focus:border-primary focus:ring-4 focus:ring-primary/20 transition-all outline-none text-lg shadow-sm"
-            placeholder="Search for songs, artists, or podcasts..."
+            className="w-full pl-10 pr-4 py-2 bg-white text-black rounded-full text-sm placeholder:text-[#727272] focus:outline-none focus:ring-2 focus:ring-[#1db954]"
+            placeholder="Search songs..."
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
               setHasSearched(false);
             }}
           />
-          <button 
-            type="submit" 
-            className="absolute right-2 top-2 bottom-2 bg-primary text-primary-foreground px-6 rounded-full font-medium hover:bg-primary/90 transition-colors shadow-md flex items-center gap-2"
-            disabled={loading}
-          >
-            {loading ? <Loader2 className="animate-spin" size={20} /> : 'Search'}
-          </button>
         </div>
       </form>
 
-      {loading && (
-        <div className="flex justify-center items-center py-20 text-muted-foreground gap-3">
-          <Loader2 className="animate-spin" size={24} />
-          <span>Searching Music...</span>
-        </div>
-      )}
+      {loading && <div className="flex justify-center py-12"><Loader2 className="animate-spin text-[#1db954]" size={20} /></div>}
 
       {!loading && hasSearched && results.length === 0 && (
-        <div className="flex justify-center items-center py-20 text-muted-foreground">
-          <span>No results found.</span>
-        </div>
+        <div className="py-12 text-center text-sm text-[#b3b3b3]">No results found</div>
       )}
 
       {!loading && results.length > 0 && (
-        <div className="space-y-6">
-          <h2 className="text-2xl font-bold px-2">Top Tracks</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {results.map((song) => (
-              <div 
-                key={song.id} 
-                className="group relative bg-card border border-border hover:border-primary/50 rounded-xl overflow-hidden transition-all duration-300 hover:shadow-xl hover:-translate-y-1"
-              >
-                <div className="relative aspect-video overflow-hidden">
-                  <img 
-                    src={song.thumbnail} 
-                    alt={song.title} 
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                  />
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3 backdrop-blur-[2px]">
-                    <button 
-                      onClick={() => setCurrentSong(song)}
-                      className="w-12 h-12 flex items-center justify-center rounded-full hover:scale-110 transition-transform shadow-lg border border-white/30"
-                      style={{ background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(16px) saturate(180%)', WebkitBackdropFilter: 'blur(16px) saturate(180%)' }}
-                      title="Play"
+        <div className="mt-5">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+            {results.map((song) => {
+              const isCurrent = currentSong?.id === song.id;
+              return (
+                <div key={song.id} className="group bg-[#181818] hover:bg-[#282828] rounded p-3 transition-colors cursor-pointer">
+                  <div className="relative aspect-square rounded mb-2 shadow-lg">
+                    <img src={song.thumbnail} alt={song.title} className="w-full h-full object-cover rounded" />
+                    <button
+                      onClick={() => playSong(song)}
+                      className="absolute bottom-1 right-1 w-8 h-8 flex items-center justify-center bg-[#1db954] rounded-full opacity-0 group-hover:opacity-100 transition-all hover:scale-105"
                     >
-                      <Play size={22} fill="white" stroke="white" className="ml-0.5" />
-                    </button>
-                    <button 
-                      onClick={() => addToPlaylist(song)}
-                      className="w-10 h-10 flex items-center justify-center rounded-full hover:scale-110 transition-all border border-white/20"
-                      style={{ background: 'rgba(255,255,255,0.10)', backdropFilter: 'blur(16px) saturate(180%)', WebkitBackdropFilter: 'blur(16px) saturate(180%)' }}
-                      title="Add to Queue"
-                    >
-                      <Plus size={20} stroke="white" />
+                      {isCurrent && isPlaying ? <Pause size={14} fill="black" className="text-black" /> : <Play size={14} fill="black" className="text-black ml-0.5" />}
                     </button>
                   </div>
-                  <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded font-medium backdrop-blur-sm">
-                    {song.duration}
-                  </div>
+                  <h3 className="text-xs font-medium truncate text-white">{song.title}</h3>
+                  <p className="text-[10px] text-[#b3b3b3] truncate">{song.author}</p>
                 </div>
-                <div className="p-4">
-                  <h3 className="font-semibold text-card-foreground line-clamp-1 group-hover:text-primary transition-colors">{song.title}</h3>
-                  <p className="text-sm text-muted-foreground mt-1 line-clamp-1">{song.author}</p>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

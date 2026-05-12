@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import path from 'path';
 
 // Fix Next.js ENOENT issue by resolving absolute path to yt-dlp binary
-const binaryPath = path.resolve(process.cwd(), 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp.exe');
+const binaryPath = path.resolve(process.cwd(), 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp');
 const youtubedl = create(binaryPath);
 
 export async function GET(request) {

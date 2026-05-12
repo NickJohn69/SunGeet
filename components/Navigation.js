@@ -1,118 +1,103 @@
 'use client';
 
-import { Music, Moon, Sun, Download, Library as LibraryIcon, LogIn, LogOut, DownloadCloud } from 'lucide-react';
-import useStore from '../store/useStore';
-import useAuthStore from '../store/authStore';
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import useAuthStore from '../store/authStore';
+import { Search as SearchIcon, Play, Pause, Loader2 } from 'lucide-react';
+import useStore from '../store/useStore';
 import LoginModal from './LoginModal';
 
 export default function Navigation() {
-  const { theme, toggleTheme } = useStore();
-  const { user, login, logout } = useAuthStore();
+  const { user } = useAuthStore();
+  const { setCurrentSong, currentSong, isPlaying, setIsPlaying } = useStore();
   const [mounted, setMounted] = useState(false);
-  const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [showResults, setShowResults] = useState(false);
 
   useEffect(() => {
     setMounted(true);
-    if (typeof document !== 'undefined') {
-      if (theme === 'dark') {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
-    }
-
-    const handleBeforeInstallPrompt = (e) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-    };
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch((err) => console.log('Service Worker registration failed: ', err));
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
     }
+  }, []);
 
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    };
-  }, [theme]);
+  const handleSearch = async (e) => {
+    e.preventDefault();
+    if (!query.trim()) return;
 
-  const handleInstallClick = async () => {
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') {
-        setDeferredPrompt(null);
-      }
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+      const data = await res.json();
+      setResults(data);
+      setShowResults(true);
+    } catch (error) {
+      console.error("Search error:", error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleLoginClick = () => {
-    setIsLoginOpen(true);
+  const playSong = (song) => {
+    if (currentSong?.id === song.id) {
+      setIsPlaying(!isPlaying);
+    } else {
+      setCurrentSong(song);
+      setShowResults(false);
+      setQuery('');
+    }
   };
 
   return (
-    <nav className="sticky top-0 z-30 bg-background/80 backdrop-blur-xl border-b border-border/50">
-      <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity">
-          <div className="w-10 h-10 bg-primary flex items-center justify-center rounded-xl shadow-lg shadow-primary/20">
-            <Music size={22} className="text-primary-foreground" />
-          </div>
-          <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/60">
-            SunGeet
-          </h1>
-        </Link>
+    <>
+      <header className="sticky top-0 z-30 bg-[#121212] px-6 py-4">
+        <div className="flex items-center justify-between gap-4">
+          <form onSubmit={handleSearch} className="flex-1 max-w-md relative">
+            <SearchIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#b3b3b3]" />
+            <input
+              type="text"
+              className="w-full pl-9 pr-4 py-1.5 bg-white text-black rounded-full text-sm placeholder:text-[#727272] focus:outline-none focus:ring-2 focus:ring-[#1db954]"
+              placeholder="Search songs..."
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setShowResults(false);
+              }}
+            />
+          </form>
 
-        <div className="flex items-center gap-4">
-          {mounted && deferredPrompt && (
-            <button
-              onClick={handleInstallClick}
-              className="flex items-center gap-2 px-3 h-10 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors text-sm font-medium"
-            >
-              <DownloadCloud size={18} />
-              <span className="hidden sm:inline">Install App</span>
+          {mounted && !user && (
+            <button onClick={() => setIsLoginOpen(true)} className="px-3 py-1 bg-white text-black text-xs font-bold rounded-full hover:scale-105 transition-transform">
+              Sign in
             </button>
           )}
-          
-          {mounted && user && (
-            <Link href="/library" className="flex items-center gap-2 px-3 h-10 rounded-full bg-muted/50 text-foreground hover:bg-muted transition-colors text-sm font-medium">
-              <LibraryIcon size={18} className="text-primary" />
-              <span className="hidden sm:inline">Library</span>
-            </Link>
-          )}
-
-          {mounted && (
-            <>
-              {user ? (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-muted-foreground hidden md:inline">Hi, {user.username}</span>
-                  <button onClick={logout} className="w-10 h-10 flex items-center justify-center rounded-full bg-muted/50 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors" title="Logout">
-                    <LogOut size={18} />
-                  </button>
-                </div>
-              ) : (
-                <button onClick={handleLoginClick} className="flex items-center gap-2 px-4 h-10 rounded-full bg-primary text-primary-foreground hover:opacity-90 transition-opacity text-sm font-medium">
-                  <LogIn size={18} />
-                  <span>Login</span>
-                </button>
-              )}
-              
-              <button
-                onClick={toggleTheme}
-                className="w-10 h-10 flex items-center justify-center rounded-full bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                title="Toggle Theme"
-              >
-                {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
-              </button>
-            </>
-          )}
         </div>
-      </div>
-      
+
+        {showResults && results.length > 0 && (
+          <div className="absolute top-full left-0 right-0 bg-[#282828] border border-[#282828] rounded-lg mt-2 max-h-80 overflow-y-auto shadow-xl">
+            {results.slice(0, 8).map((song) => {
+              const isCurrent = currentSong?.id === song.id;
+              return (
+                <button
+                  key={song.id}
+                  onClick={() => playSong(song)}
+                  className="w-full flex items-center gap-3 px-4 py-2 hover:bg-[#3e3e3e] transition-colors text-left"
+                >
+                  <img src={song.thumbnail} alt={song.title} className="w-8 h-8 rounded object-cover" />
+                  <div className="min-w-0 flex-1">
+                    <p className={`text-xs truncate ${isCurrent ? 'text-[#1db954]' : 'text-white'}`}>{song.title}</p>
+                    <p className="text-[10px] text-[#b3b3b3] truncate">{song.author}</p>
+                  </div>
+                  {isCurrent && isPlaying && <Play size={12} fill="#1db954" className="text-[#1db954]" />}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </header>
       <LoginModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} />
-    </nav>
+    </>
   );
 }
