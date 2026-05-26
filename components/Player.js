@@ -173,10 +173,6 @@ export default function Player() {
   }, [volume, playerReady]);
 
   useEffect(() => {
-    if (progressInterval.current) {
-      clearInterval(progressInterval.current);
-    }
-
     if (isPlaying && playerReady && ytPlayerRef.current) {
       progressInterval.current = setInterval(() => {
         try {
@@ -186,12 +182,21 @@ export default function Player() {
             setProgress(currentTime);
             if (dur > 0) setDuration(dur);
             
+            // Sync Media Session Position State
+            if ('mediaSession' in navigator && dur > 0) {
+              navigator.mediaSession.setPositionState({
+                duration: dur,
+                playbackRate: 1,
+                position: currentTime
+              });
+            }
+
             window.dispatchEvent(new CustomEvent('playerTimeUpdate', {
               detail: { currentTime, duration: dur }
             }));
           }
         } catch (e) {}
-      }, 250);
+      }, 1000); // Reduced frequency for background efficiency
     }
 
     return () => {
@@ -200,6 +205,56 @@ export default function Player() {
       }
     };
   }, [isPlaying, playerReady]);
+
+  // Media Session API for Lock Screen Controls
+  useEffect(() => {
+    if (!('mediaSession' in navigator) || !currentSong) return;
+
+    // Update Metadata
+    navigator.mediaSession.metadata = new window.MediaMetadata({
+      title: currentSong.title,
+      artist: currentSong.author,
+      album: 'SunGeet',
+      artwork: [
+        { src: currentSong.thumbnail, sizes: '512x512', type: 'image/jpeg' },
+        { src: currentSong.thumbnail, sizes: '192x192', type: 'image/jpeg' },
+      ]
+    });
+
+    // Action Handlers
+    const handlers = [
+      ['play', () => setIsPlaying(true)],
+      ['pause', () => setIsPlaying(false)],
+      ['previoustrack', () => playPrev()],
+      ['nexttrack', () => playNext()],
+      ['seekbackward', (details) => {
+        const skipTime = details.seekOffset || 10;
+        const newTime = Math.max(progress - skipTime, 0);
+        ytPlayerRef.current?.seekTo(newTime, true);
+        setProgress(newTime);
+      }],
+      ['seekforward', (details) => {
+        const skipTime = details.seekOffset || 10;
+        const newTime = Math.min(progress + skipTime, duration);
+        ytPlayerRef.current?.seekTo(newTime, true);
+        setProgress(newTime);
+      }],
+    ];
+
+    for (const [action, handler] of handlers) {
+      try {
+        navigator.mediaSession.setActionHandler(action, handler);
+      } catch (error) {
+        // Fallback for unsupported actions
+      }
+    }
+
+    return () => {
+      for (const [action] of handlers) {
+        try { navigator.mediaSession.setActionHandler(action, null); } catch (e) {}
+      }
+    };
+  }, [currentSong, playNext, playPrev, setIsPlaying, progress, duration, playerReady]);
 
   useEffect(() => {
     const lyricsSeekHandler = (e) => {

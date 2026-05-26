@@ -54,28 +54,16 @@ export default function AdminDashboard() {
       // Since we can't easily query auth.users from client without admin key,
       // we'll use the record from our user_plan_details stats which has the ID.
       const userToPromote = stats.user_plan_details.find(u => u.email.toLowerCase() === email.toLowerCase());
-      
+
       if (!userToPromote) {
         throw new Error("User not found in recent records. Try refreshing first.");
       }
 
-      const { session } = useAuthStore.getState();
-      
-      const response = await fetch('/api/admin/promote', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token}`
-        },
-        body: JSON.stringify({
-          userId: userToPromote.user_id,
-          plan: 'premium'
-        })
-      });
+      const { error: upgradeError } = await supabase
+        .from('user_plans')
+        .upsert({ user_id: userToPromote.user_id, plan: 'premium', updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
 
-      const result = await response.json();
-      
-      if (!response.ok) throw new Error(result.error || 'Promotion failed');
+      if (upgradeError) throw upgradeError;
 
       setPromoMessage({ text: `Success! ${email} is now Premium.`, type: 'success' });
       setPromotionalEmail('');
@@ -120,13 +108,13 @@ export default function AdminDashboard() {
   return (
     <div className="min-h-screen bg-black text-white p-8 lg:p-12 animate-fade-in pb-32">
       <div className="max-w-7xl mx-auto">
-        
+
         {/* Header */}
         <div className="flex items-center justify-between mb-16">
           <div>
             <div className="flex items-center gap-2 text-[#fa2d48] mb-2">
-               <ShieldCheck size={20} />
-               <span className="text-[10px] font-black uppercase tracking-[0.3em]">System Authority</span>
+              <ShieldCheck size={20} />
+              <span className="text-[10px] font-black uppercase tracking-[0.3em]">System Authority</span>
             </div>
             <h1 className="text-[44px] font-black tracking-tight leading-none">Master Control</h1>
           </div>
@@ -140,13 +128,13 @@ export default function AdminDashboard() {
               <RefreshCw size={18} className={`text-white/40 ${loading ? 'animate-spin' : ''}`} />
             </button>
             <div className="flex items-center gap-4 bg-white/5 p-3 rounded-2xl border border-white/5 shadow-2xl">
-               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#fa2d48] to-[#ff453a] flex items-center justify-center text-white font-black">
-                  {user?.email?.[0].toUpperCase()}
-               </div>
-               <div className="pr-4">
-                  <p className="text-xs font-bold leading-none">{user?.email}</p>
-                  <p className="text-[10px] text-white/40 mt-1 uppercase font-black tracking-widest">Super Admin</p>
-               </div>
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#fa2d48] to-[#ff453a] flex items-center justify-center text-white font-black">
+                {user?.email?.[0].toUpperCase()}
+              </div>
+              <div className="pr-4">
+                <p className="text-xs font-bold leading-none">{user?.email}</p>
+                <p className="text-[10px] text-white/40 mt-1 uppercase font-black tracking-widest">Super Admin</p>
+              </div>
             </div>
           </div>
         </div>
@@ -174,192 +162,190 @@ export default function AdminDashboard() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
               {statCards.map((stat) => (
                 <div key={stat.label} className={`bg-gradient-to-br ${stat.color} border border-white/5 p-8 rounded-[2.5rem] group hover:border-[#fa2d48]/30 transition-all shadow-xl`}>
-                   <div className="flex items-center justify-between mb-6">
-                      <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center text-white/40 group-hover:text-[#fa2d48] transition-colors">
-                         {stat.icon}
-                      </div>
-                   </div>
-                   <p className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-2">{stat.label}</p>
-                   <h3 className="text-3xl font-black tracking-tighter">{stat.value.toLocaleString()}</h3>
+                  <div className="flex items-center justify-between mb-6">
+                    <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center text-white/40 group-hover:text-[#fa2d48] transition-colors">
+                      {stat.icon}
+                    </div>
+                  </div>
+                  <p className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-2">{stat.label}</p>
+                  <h3 className="text-3xl font-black tracking-tighter">{stat.value.toLocaleString()}</h3>
                 </div>
               ))}
             </div>
 
             {/* Main Content Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-               
-               {/* Users Table - Takes 2 columns */}
-               <div className="lg:col-span-2 space-y-6">
-                  <div className="bg-[#1c1c1e] border border-white/5 rounded-[2.5rem] p-8">
-                     <h2 className="text-xl font-black mb-8 flex items-center gap-2">
-                        <Users size={20} className="text-[#fa2d48]" /> All Users
-                        <span className="ml-auto text-[10px] font-black text-white/20 uppercase tracking-widest">
-                          {stats.user_plan_details?.length || 0} total
-                        </span>
-                     </h2>
 
-                     {/* Table Header */}
-                     <div className="flex items-center gap-4 px-4 py-2 border-b border-white/5 text-[9px] font-black uppercase tracking-[0.2em] text-white/20 mb-2">
-                        <span className="w-8">#</span>
-                        <span className="flex-1">User</span>
-                        <span className="w-24 text-center">Plan</span>
-                        <span className="w-28">Joined</span>
-                        <span className="w-24">Last Seen</span>
-                     </div>
+              {/* Users Table - Takes 2 columns */}
+              <div className="lg:col-span-2 space-y-6">
+                <div className="bg-[#1c1c1e] border border-white/5 rounded-[2.5rem] p-8">
+                  <h2 className="text-xl font-black mb-8 flex items-center gap-2">
+                    <Users size={20} className="text-[#fa2d48]" /> All Users
+                    <span className="ml-auto text-[10px] font-black text-white/20 uppercase tracking-widest">
+                      {stats.user_plan_details?.length || 0} total
+                    </span>
+                  </h2>
 
-                     {/* User Rows */}
-                     <div className="space-y-1 max-h-[400px] overflow-y-auto no-scrollbar">
-                       {stats.user_plan_details?.map((u, i) => (
-                         <div key={u.user_id} className="flex items-center gap-4 p-4 rounded-2xl hover:bg-white/5 transition-all group">
-                            <span className="w-8 text-[11px] font-black text-white/20">{i + 1}</span>
-                            <div className="flex-1 min-w-0 flex items-center gap-3">
-                               <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white font-black text-xs flex-shrink-0 ${
-                                 u.plan === 'premium' 
-                                   ? 'bg-gradient-to-br from-[#fa2d48] to-[#af52de]' 
-                                   : 'bg-white/10'
-                               }`}>
-                                  {(u.display_name || u.email)?.[0]?.toUpperCase() || '?'}
-                               </div>
-                               <div className="min-w-0">
-                                  <p className="text-sm font-bold truncate group-hover:text-[#fa2d48] transition-colors">
-                                    {u.display_name || 'Unnamed'}
-                                  </p>
-                                  <p className="text-[10px] text-white/30 truncate">{u.email}</p>
-                               </div>
-                            </div>
-                            <div className="w-24 flex justify-center">
-                              {u.plan === 'premium' ? (
-                                <span className="inline-flex items-center gap-1 bg-gradient-to-r from-[#fa2d48]/20 to-[#af52de]/20 text-[#fa2d48] px-2.5 py-1 rounded-full">
-                                  <Crown size={10} />
-                                  <span className="text-[8px] font-black uppercase tracking-wider">Premium</span>
-                                </span>
-                              ) : (
-                                <span className="text-[9px] font-black uppercase tracking-wider text-white/25 bg-white/5 px-2.5 py-1 rounded-full">Free</span>
-                              )}
-                            </div>
-                            <span className="w-28 text-[11px] text-white/30 font-medium">{formatDate(u.created_at)}</span>
-                            <span className="w-24 text-[11px] text-white/20 font-medium">{formatTime(u.last_sign_in_at)}</span>
-                         </div>
-                       ))}
-                       {(!stats.user_plan_details || stats.user_plan_details.length === 0) && (
-                         <div className="py-12 text-center text-white/20 text-sm">No users found</div>
-                       )}
-                     </div>
-                  </div>
-               </div>
-
-               {/* Right Column */}
-               <div className="space-y-6">
-                  
-                  {/* Plan Distribution */}
-                  <div className="bg-[#1c1c1e] border border-white/5 rounded-[2.5rem] p-8">
-                     <h2 className="text-base font-black mb-6 flex items-center gap-2">
-                        <Crown size={18} className="text-[#fa2d48]" /> Plan Distribution
-                     </h2>
-                     <div className="space-y-4">
-                        <div>
-                           <div className="flex items-center justify-between mb-2">
-                              <span className="text-xs font-bold text-white/60">Free</span>
-                              <span className="text-xs font-black text-white/40">{stats.free_users || 0}</span>
-                           </div>
-                           <div className="h-2 bg-white/5 rounded-full overflow-hidden">
-                              <div 
-                                className="h-full bg-white/20 rounded-full transition-all duration-1000"
-                                style={{ width: `${stats.total_users ? ((stats.free_users || 0) / stats.total_users * 100) : 0}%` }}
-                              />
-                           </div>
-                        </div>
-                        <div>
-                           <div className="flex items-center justify-between mb-2">
-                              <span className="text-xs font-bold text-[#fa2d48]">Premium</span>
-                              <span className="text-xs font-black text-[#fa2d48]/60">{stats.premium_users || 0}</span>
-                           </div>
-                           <div className="h-2 bg-white/5 rounded-full overflow-hidden">
-                              <div 
-                                className="h-full bg-gradient-to-r from-[#fa2d48] to-[#af52de] rounded-full transition-all duration-1000"
-                                style={{ width: `${stats.total_users ? ((stats.premium_users || 0) / stats.total_users * 100) : 0}%` }}
-                              />
-                           </div>
-                        </div>
-                     </div>
-                     <div className="mt-6 pt-6 border-t border-white/5 text-center">
-                        <p className="text-[10px] font-black text-white/15 uppercase tracking-widest">
-                          Revenue Est: NPR {((stats.premium_users || 0) * 100).toLocaleString()}/mo
-                        </p>
-                     </div>
+                  {/* Table Header */}
+                  <div className="flex items-center gap-4 px-4 py-2 border-b border-white/5 text-[9px] font-black uppercase tracking-[0.2em] text-white/20 mb-2">
+                    <span className="w-8">#</span>
+                    <span className="flex-1">User</span>
+                    <span className="w-24 text-center">Plan</span>
+                    <span className="w-28">Joined</span>
+                    <span className="w-24">Last Seen</span>
                   </div>
 
-                  {/* Database Card */}
-                  <div className="bg-[#fa2d48] rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden group">
-                     <div className="absolute top-0 right-0 p-8 opacity-20 transform translate-x-4 -translate-y-4">
-                        <Database size={120} />
-                     </div>
-                     <h2 className="text-xl font-black mb-4 relative z-10">Database Sync</h2>
-                     <p className="text-sm font-medium opacity-80 mb-3 relative z-10">
-                       Supabase Primary is online. All records synchronized.
-                     </p>
-                     <div className="flex items-center gap-2 mb-6 relative z-10">
-                        <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
-                        <span className="text-[10px] font-black uppercase tracking-widest opacity-60">Live</span>
-                     </div>
-                     <div className="grid grid-cols-2 gap-3 relative z-10">
-                        <div className="bg-white/20 rounded-xl p-3 text-center">
-                           <p className="text-lg font-black">{stats.total_playlists || 0}</p>
-                           <p className="text-[8px] font-black uppercase tracking-widest opacity-60">Playlists</p>
+                  {/* User Rows */}
+                  <div className="space-y-1 max-h-[400px] overflow-y-auto no-scrollbar">
+                    {stats.user_plan_details?.map((u, i) => (
+                      <div key={u.user_id} className="flex items-center gap-4 p-4 rounded-2xl hover:bg-white/5 transition-all group">
+                        <span className="w-8 text-[11px] font-black text-white/20">{i + 1}</span>
+                        <div className="flex-1 min-w-0 flex items-center gap-3">
+                          <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white font-black text-xs flex-shrink-0 ${u.plan === 'premium'
+                              ? 'bg-gradient-to-br from-[#fa2d48] to-[#af52de]'
+                              : 'bg-white/10'
+                            }`}>
+                            {(u.display_name || u.email)?.[0]?.toUpperCase() || '?'}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-bold truncate group-hover:text-[#fa2d48] transition-colors">
+                              {u.display_name || 'Unnamed'}
+                            </p>
+                            <p className="text-[10px] text-white/30 truncate">{u.email}</p>
+                          </div>
                         </div>
-                        <div className="bg-white/20 rounded-xl p-3 text-center">
-                           <p className="text-lg font-black">{stats.total_songs || 0}</p>
-                           <p className="text-[8px] font-black uppercase tracking-widest opacity-60">Songs</p>
+                        <div className="w-24 flex justify-center">
+                          {u.plan === 'premium' ? (
+                            <span className="inline-flex items-center gap-1 bg-gradient-to-r from-[#fa2d48]/20 to-[#af52de]/20 text-[#fa2d48] px-2.5 py-1 rounded-full">
+                              <Crown size={10} />
+                              <span className="text-[8px] font-black uppercase tracking-wider">Premium</span>
+                            </span>
+                          ) : (
+                            <span className="text-[9px] font-black uppercase tracking-wider text-white/25 bg-white/5 px-2.5 py-1 rounded-full">Free</span>
+                          )}
                         </div>
-                     </div>
-                  </div>
-
-                   {/* Manual User Promotion */}
-                   <div className="bg-[#1c1c1e] border border-white/5 rounded-[2.5rem] p-8">
-                      <h2 className="text-base font-black mb-4 flex items-center gap-2">
-                         <UserCheck size={18} className="text-[#fa2d48]" /> Manual Promotion
-                      </h2>
-                      <p className="text-[10px] text-white/40 uppercase font-black tracking-widest mb-6 leading-relaxed">Upgrade any user to Premium by email address.</p>
-                      
-                      <div className="space-y-4">
-                         <div className="relative group">
-                            <input 
-                              type="email" 
-                              placeholder="user@example.com"
-                              value={promotionalEmail}
-                              onChange={(e) => setPromotionalEmail(e.target.value)}
-                              className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-3.5 text-sm outline-none focus:border-[#fa2d48] transition-all"
-                            />
-                         </div>
-                         <button 
-                           onClick={() => promoteUserByEmail(promotionalEmail)}
-                           disabled={promoLoading || !promotionalEmail}
-                           className="w-full py-4 bg-[#fa2d48] hover:bg-[#fa2d48]/90 disabled:opacity-50 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2"
-                         >
-                            {promoLoading ? <Loader2 size={16} className="animate-spin" /> : 'Elevate to Premium'}
-                         </button>
-                         
-                         {promoMessage && (
-                           <div className={`p-4 rounded-xl text-[10px] font-bold text-center ${
-                             promoMessage.type === 'success' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'
-                           }`}>
-                             {promoMessage.text}
-                           </div>
-                         )}
+                        <span className="w-28 text-[11px] text-white/30 font-medium">{formatDate(u.created_at)}</span>
+                        <span className="w-24 text-[11px] text-white/20 font-medium">{formatTime(u.last_sign_in_at)}</span>
                       </div>
-                   </div>
-
-                  {/* Deployment Status */}
-                  <div className="bg-[#1c1c1e] border border-white/5 rounded-[2.5rem] p-8 flex flex-col items-center text-center">
-                     <Globe size={32} className="text-white/20 mb-4" />
-                     <h3 className="font-bold text-sm mb-2">Global Deployment</h3>
-                     <p className="text-[10px] text-white/40 uppercase font-black tracking-widest leading-relaxed">System is active in <br />Central Asia South-1</p>
-                     <div className="flex items-center gap-2 mt-4">
-                        <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                        <span className="text-[9px] font-black text-green-500 uppercase tracking-widest">Operational</span>
-                     </div>
+                    ))}
+                    {(!stats.user_plan_details || stats.user_plan_details.length === 0) && (
+                      <div className="py-12 text-center text-white/20 text-sm">No users found</div>
+                    )}
                   </div>
-               </div>
+                </div>
+              </div>
+
+              {/* Right Column */}
+              <div className="space-y-6">
+
+                {/* Plan Distribution */}
+                <div className="bg-[#1c1c1e] border border-white/5 rounded-[2.5rem] p-8">
+                  <h2 className="text-base font-black mb-6 flex items-center gap-2">
+                    <Crown size={18} className="text-[#fa2d48]" /> Plan Distribution
+                  </h2>
+                  <div className="space-y-4">
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-bold text-white/60">Free</span>
+                        <span className="text-xs font-black text-white/40">{stats.free_users || 0}</span>
+                      </div>
+                      <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-white/20 rounded-full transition-all duration-1000"
+                          style={{ width: `${stats.total_users ? ((stats.free_users || 0) / stats.total_users * 100) : 0}%` }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-bold text-[#fa2d48]">Premium</span>
+                        <span className="text-xs font-black text-[#fa2d48]/60">{stats.premium_users || 0}</span>
+                      </div>
+                      <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-[#fa2d48] to-[#af52de] rounded-full transition-all duration-1000"
+                          style={{ width: `${stats.total_users ? ((stats.premium_users || 0) / stats.total_users * 100) : 0}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-6 pt-6 border-t border-white/5 text-center">
+                    <p className="text-[10px] font-black text-white/15 uppercase tracking-widest">
+                      Revenue Est: NPR {((stats.premium_users || 0) * 100).toLocaleString()}/mo
+                    </p>
+                  </div>
+                </div>
+
+                {/* Database Card */}
+                <div className="bg-[#fa2d48] rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden group">
+                  <div className="absolute top-0 right-0 p-8 opacity-20 transform translate-x-4 -translate-y-4">
+                    <Database size={120} />
+                  </div>
+                  <h2 className="text-xl font-black mb-4 relative z-10">Database Sync</h2>
+                  <p className="text-sm font-medium opacity-80 mb-3 relative z-10">
+                    Supabase Primary is online. All records synchronized.
+                  </p>
+                  <div className="flex items-center gap-2 mb-6 relative z-10">
+                    <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
+                    <span className="text-[10px] font-black uppercase tracking-widest opacity-60">Live</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 relative z-10">
+                    <div className="bg-white/20 rounded-xl p-3 text-center">
+                      <p className="text-lg font-black">{stats.total_playlists || 0}</p>
+                      <p className="text-[8px] font-black uppercase tracking-widest opacity-60">Playlists</p>
+                    </div>
+                    <div className="bg-white/20 rounded-xl p-3 text-center">
+                      <p className="text-lg font-black">{stats.total_songs || 0}</p>
+                      <p className="text-[8px] font-black uppercase tracking-widest opacity-60">Songs</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Manual User Promotion */}
+                <div className="bg-[#1c1c1e] border border-white/5 rounded-[2.5rem] p-8">
+                  <h2 className="text-base font-black mb-4 flex items-center gap-2">
+                    <UserCheck size={18} className="text-[#fa2d48]" /> Manual Promotion
+                  </h2>
+                  <p className="text-[10px] text-white/40 uppercase font-black tracking-widest mb-6 leading-relaxed">Upgrade any user to Premium by email address.</p>
+
+                  <div className="space-y-4">
+                    <div className="relative group">
+                      <input
+                        type="email"
+                        placeholder="user@example.com"
+                        value={promotionalEmail}
+                        onChange={(e) => setPromotionalEmail(e.target.value)}
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-3.5 text-sm outline-none focus:border-[#fa2d48] transition-all"
+                      />
+                    </div>
+                    <button
+                      onClick={() => promoteUserByEmail(promotionalEmail)}
+                      disabled={promoLoading || !promotionalEmail}
+                      className="w-full py-4 bg-[#fa2d48] hover:bg-[#fa2d48]/90 disabled:opacity-50 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2"
+                    >
+                      {promoLoading ? <Loader2 size={16} className="animate-spin" /> : 'Elevate to Premium'}
+                    </button>
+
+                    {promoMessage && (
+                      <div className={`p-4 rounded-xl text-[10px] font-bold text-center ${promoMessage.type === 'success' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'
+                        }`}>
+                        {promoMessage.text}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Deployment Status */}
+                <div className="bg-[#1c1c1e] border border-white/5 rounded-[2.5rem] p-8 flex flex-col items-center text-center">
+                  <Globe size={32} className="text-white/20 mb-4" />
+                  <h3 className="font-bold text-sm mb-2">Global Deployment</h3>
+                  <p className="text-[10px] text-white/40 uppercase font-black tracking-widest leading-relaxed">System is active in <br />Central Asia South-1</p>
+                  <div className="flex items-center gap-2 mt-4">
+                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                    <span className="text-[9px] font-black text-green-500 uppercase tracking-widest">Operational</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </>
         )}
