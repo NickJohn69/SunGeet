@@ -12,55 +12,126 @@
   --color-border: var(--border);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
-  --color-green: #1db954;
-  --color-green-hover: #1ed760;
+  --color-accent: #3b82f6;
+  --color-accent-hover: #2563eb;
 }
 
 @layer base {
   :root {
-    --background: #121212;
+    --background: #000000;
     --foreground: #ffffff;
-    --card: #121212;
+    --card: #1c1c1e;
     --card-foreground: #ffffff;
-    --primary: #1db954;
-    --primary-foreground: #000000;
-    --muted: #181818;
-    --muted-foreground: #b3b3b3;
-    --border: #282828;
-    --destructive: #e91429;
+    --primary: #fa2d48; /* Apple Music Red */
+    --primary-foreground: #ffffff;
+    --muted: #1c1c1e;
+    --muted-foreground: #8e8e93;
+    --border: #2c2c2e;
+    --destructive: #ff453a;
     --destructive-foreground: #ffffff;
   }
 }
 
 @layer base {
-  * { border-color: var(--border); }
+  * {
+    border-color: var(--border);
+  }
+
   body {
     background-color: var(--background);
     color: var(--foreground);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     -webkit-font-smoothing: antialiased;
+    letter-spacing: -0.01em;
+  }
+
+  button, 
+  a, 
+  [role="button"],
+  input[type="range"] {
+    cursor: pointer !important;
   }
 }
 
-::-webkit-scrollbar { width: 8px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.5); }
+/* Glassmorphism effects */
+.glass {
+  background: rgba(24, 24, 27, 0.7);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
 
+.glass-dark {
+  background: rgba(9, 9, 11, 0.8);
+  backdrop-filter: blur(20px);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #52525b;
+}
+
+/* Range Input Styling */
 input[type=range] {
   -webkit-appearance: none;
   background: transparent;
   cursor: pointer;
+  height: 4px;
 }
+
 input[type=range]::-webkit-slider-thumb {
   -webkit-appearance: none;
-  height: 12px; width: 12px;
+  height: 14px;
+  width: 14px;
   border-radius: 50%;
-  background: var(--foreground);
+  background: white;
   margin-top: -5px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+  border: none;
 }
+
 input[type=range]::-webkit-slider-runnable-track {
-  width: 100%; height: 4px;
-  background: rgba(255,255,255,0.3);
-  border-radius: 2px;
+  width: 100%;
+  height: 4px;
+  background: #27272a;
+  border-radius: 10px;
+}
+
+/* Animations */
+@keyframes slideUp {
+  from { transform: translateY(10px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.animate-slide-up {
+  animation: slideUp 0.4s ease-out forwards;
+}
+
+.song-card-shadow {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.song-card-shadow:hover {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+/* Hide scrollbar utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }

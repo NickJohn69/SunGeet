@@ -2,8 +2,15 @@ import { create } from 'youtube-dl-exec';
 import { NextResponse } from 'next/server';
 import path from 'path';
 
-// Fix Next.js ENOENT issue by resolving absolute path to yt-dlp binary
-const binaryPath = path.resolve(process.cwd(), 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp');
+// Resolve absolute path to yt-dlp binary, handling Windows .exe extension
+const binaryPath = path.resolve(
+  process.cwd(), 
+  'node_modules', 
+  'youtube-dl-exec', 
+  'bin', 
+  process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp'
+);
+
 const youtubedl = create(binaryPath);
 
 export async function GET(request) {
@@ -18,40 +25,45 @@ export async function GET(request) {
   try {
     const output = await youtubedl(url, {
       dumpJson: true,
-      format: 'bestaudio[ext=m4a]/bestaudio', // Force M4A for universal browser support
+      format: 'bestaudio[ext=m4a]/bestaudio',
       noWarnings: true,
-      noCallHome: true,
       noCheckCertificate: true,
-      youtubeSkipDashManifest: true,
-      referer: 'https://www.youtube.com/'
+      referer: 'https://www.youtube.com/',
+      userAgent: userAgent,
+      extractorArgs: 'youtube:player_client=ios,web,web_creator',
+      forceIpv4: true
     });
 
     if (!output.url) throw new Error("No audio URL found in yt-dlp output");
     const streamUrl = output.url;
 
-    // Proxy the stream to completely hide the user's localhost origin and bypass CORS
-    // while perfectly forwarding Range headers to allow music scrubbing/skipping!
+    // Proxy the stream with proper Range header support for scrubbing
     const fetchHeaders = new Headers();
     fetchHeaders.set('User-Agent', userAgent);
     fetchHeaders.set('Referer', 'https://www.youtube.com/');
     
     const range = request.headers.get('range');
-    if (range) {
-      fetchHeaders.set('Range', range);
-    }
+    if (range) fetchHeaders.set('Range', range);
 
     const response = await fetch(streamUrl, {
       headers: fetchHeaders
     });
 
     if (!response.ok) {
-      throw new Error(`YouTube responded with ${response.status}`);
+      throw new Error(`YouTube stream responded with ${response.status}`);
     }
 
     const responseHeaders = new Headers(response.headers);
     responseHeaders.set('Access-Control-Allow-Origin', '*');
-    responseHeaders.set('Content-Type', 'audio/mp4'); // strictly enforce mp4
-    responseHeaders.delete('content-encoding');
+    
+    // Dynamically set Content-Type based on yt-dlp reported extension
+    const ext = output.ext || 'm4a';
+    const mimeType = ext === 'm4a' || ext === 'mp4' ? 'audio/mp4' : 
+                   ext === 'webm' ? 'audio/webm' : 
+                   ext === 'mp3' ? 'audio/mpeg' : 'audio/mp4';
+    
+    responseHeaders.set('Content-Type', mimeType);
+    responseHeaders.delete('content-encoding'); // Prevent issues with dual compression
     
     return new Response(response.body, {
       status: response.status,
