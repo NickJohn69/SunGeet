@@ -23,8 +23,14 @@ export default function Player() {
   const [duration, setDuration] = useState(0);
   const [mounted, setMounted] = useState(false);
   const [prevVolume, setPrevVolume] = useState(1);
+  const [isReady, setIsReady] = useState(false);
 
   useEffect(() => { setMounted(true); }, []);
+  
+  // Reset ready state on song change
+  useEffect(() => {
+    setIsReady(false);
+  }, [currentSong?.id]);
 
   const handleProgress = (state) => {
     setProgress(state.playedSeconds);
@@ -38,8 +44,8 @@ export default function Player() {
 
   useEffect(() => {
     const lyricsSeekHandler = (e) => {
-      if (playerRef.current && !isNaN(e.detail.time)) {
-        playerRef.current.seekTo(e.detail.time, 'seconds');
+      if (isReady && playerRef.current && !isNaN(e.detail.time)) {
+        playerRef.current.seekTo?.(e.detail.time, 'seconds');
         setProgress(e.detail.time);
         if (!isPlaying) setIsPlaying(true);
       }
@@ -61,8 +67,8 @@ export default function Player() {
     if (tag === 'input' || tag === 'textarea') return;
     switch (e.code) {
       case 'Space': e.preventDefault(); setIsPlaying(!isPlaying); break;
-      case 'ArrowRight': if (playerRef.current) playerRef.current.seekTo(Math.min(progress + 5, duration)); break;
-      case 'ArrowLeft': if (playerRef.current) playerRef.current.seekTo(Math.max(progress - 5, 0)); break;
+      case 'ArrowRight': if (isReady && playerRef.current) playerRef.current.seekTo?.(Math.min(progress + 5, duration)); break;
+      case 'ArrowLeft': if (isReady && playerRef.current) playerRef.current.seekTo?.(Math.max(progress - 5, 0)); break;
       case 'ArrowUp': e.preventDefault(); setVolume(Math.min(volume + 0.1, 1)); break;
       case 'ArrowDown': e.preventDefault(); setVolume(Math.max(volume - 0.1, 0)); break;
       case 'KeyM': if (volume > 0) { setPrevVolume(volume); setVolume(0); } else { setVolume(prevVolume || 1); } break;
@@ -74,8 +80,8 @@ export default function Player() {
 
   const handleSeek = (e) => {
     const time = Number(e.target.value);
-    if (playerRef.current) { 
-      playerRef.current.seekTo(time, 'seconds'); 
+    if (isReady && playerRef.current) { 
+      playerRef.current.seekTo?.(time, 'seconds'); 
       setProgress(time); 
     }
   };
@@ -99,9 +105,10 @@ export default function Player() {
           volume={volume}
           onProgress={handleProgress}
           onDuration={setDuration}
+          onReady={() => setIsReady(true)}
           onEnded={() => {
             if (repeat === 'one') {
-              playerRef.current.seekTo(0);
+              playerRef.current?.seekTo?.(0);
             } else {
               playNext();
             }
