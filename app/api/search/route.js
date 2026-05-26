@@ -27,12 +27,10 @@ export async function GET(request) {
     const results = await youtube.search(q, { type: 'video' });
 
     const videos = (results.videos || []).slice(0, 30).map(v => {
-      // Handle different result structures from InnerTube
       const videoId = v.id || v.video_id || '';
       const title = v.title?.text || v.title?.toString() || 'Unknown Title';
       const authorName = v.author?.name || v.author?.text || 'Unknown Artist';
       
-      // Get thumbnail - InnerTube provides thumbnails array
       let thumbnail = '';
       if (v.thumbnails && v.thumbnails.length > 0) {
         thumbnail = v.thumbnails[v.thumbnails.length - 1].url || v.thumbnails[0].url;
@@ -42,7 +40,6 @@ export async function GET(request) {
         thumbnail = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
       }
 
-      // Duration handling
       const durationText = v.duration?.text || v.duration?.toString() || '0:00';
       const durationSeconds = v.duration?.seconds || 0;
 
@@ -54,7 +51,7 @@ export async function GET(request) {
         durationSeconds,
         author: authorName,
       };
-    }).filter(v => v.id); // Filter out any results without an ID
+    }).filter(v => v.id);
 
     return NextResponse.json(videos);
   } catch (error) {

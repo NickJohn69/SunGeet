@@ -11,7 +11,6 @@ const formatTime = (time) => {
   return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
 };
 
-// Load YouTube IFrame API script once
 let ytApiReady = false;
 let ytApiPromise = null;
 
@@ -22,14 +21,12 @@ function loadYTApi() {
   ytApiPromise = new Promise((resolve) => {
     if (typeof window === 'undefined') return;
 
-    // If API is already loaded
     if (window.YT && window.YT.Player) {
       ytApiReady = true;
       resolve();
       return;
     }
 
-    // Set up the callback before loading the script
     const prevCallback = window.onYouTubeIframeAPIReady;
     window.onYouTubeIframeAPIReady = () => {
       ytApiReady = true;
@@ -37,7 +34,6 @@ function loadYTApi() {
       resolve();
     };
 
-    // Check if script already exists
     if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
       const tag = document.createElement('script');
       tag.src = 'https://www.youtube.com/iframe_api';
@@ -52,7 +48,6 @@ export default function Player() {
   const { currentSong, isPlaying, setIsPlaying, volume, setVolume, playNext, playPrev, toggleLyricsMode, isLyricsMode, shuffle, toggleShuffle, repeat, toggleRepeat, playlist, userPlaylists, addSongToPlaylist, isSidebarOpen } = useStore();
   const [localAddingToPlaylist, setLocalAddingToPlaylist] = useState(null);
   const ytPlayerRef = useRef(null);
-  const containerRef = useRef(null);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [mounted, setMounted] = useState(false);
@@ -63,18 +58,14 @@ export default function Player() {
   const isPlayingRef = useRef(false);
 
   useEffect(() => { setMounted(true); }, []);
-
-  // Keep refs in sync
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
 
-  // Initialize YouTube IFrame Player
   useEffect(() => {
     if (!mounted) return;
 
     loadYTApi().then(() => {
-      if (ytPlayerRef.current) return; // Already initialized
+      if (ytPlayerRef.current) return;
 
-      // Create a container div for the player
       const div = document.createElement('div');
       div.id = 'yt-player-hidden';
       div.style.position = 'fixed';
@@ -126,7 +117,6 @@ export default function Player() {
           },
           onError: (event) => {
             console.error('YouTube Player error:', event.data);
-            // Auto-skip to next song on error
             setTimeout(() => {
               const store = useStore.getState();
               store.playNext();
@@ -143,7 +133,6 @@ export default function Player() {
     };
   }, [mounted]);
 
-  // Load new video when song changes
   useEffect(() => {
     if (!playerReady || !ytPlayerRef.current || !currentSong) return;
 
@@ -159,7 +148,6 @@ export default function Player() {
     }
   }, [currentSong?.id, playerReady]);
 
-  // Play/Pause control
   useEffect(() => {
     if (!playerReady || !ytPlayerRef.current) return;
 
@@ -169,12 +157,9 @@ export default function Player() {
       } else {
         ytPlayerRef.current.pauseVideo();
       }
-    } catch (e) {
-      // Player might not be ready yet
-    }
+    } catch (e) {}
   }, [isPlaying, playerReady]);
 
-  // Volume control
   useEffect(() => {
     if (!playerReady || !ytPlayerRef.current) return;
     try {
@@ -187,7 +172,6 @@ export default function Player() {
     } catch (e) {}
   }, [volume, playerReady]);
 
-  // Progress tracking interval
   useEffect(() => {
     if (progressInterval.current) {
       clearInterval(progressInterval.current);
@@ -217,7 +201,6 @@ export default function Player() {
     };
   }, [isPlaying, playerReady]);
 
-  // Lyrics seek handler
   useEffect(() => {
     const lyricsSeekHandler = (e) => {
       if (playerReady && ytPlayerRef.current && !isNaN(e.detail.time)) {
@@ -238,7 +221,6 @@ export default function Player() {
     };
   }, [isPlaying, setIsPlaying, playerReady]);
 
-  // Keyboard shortcuts
   const handleKeyDown = useCallback((e) => {
     const tag = e.target.tagName.toLowerCase();
     if (tag === 'input' || tag === 'textarea') return;
@@ -283,7 +265,6 @@ export default function Player() {
     <div className={`fixed bottom-0 right-0 z-50 bg-[#1c1c1e]/90 backdrop-blur-2xl border-t border-white/5 px-6 py-3 select-none pointer-events-auto shadow-[0_-10px_40px_rgba(0,0,0,0.5)] transition-all duration-500 
       ${isSidebarOpen ? 'left-0 lg:left-64' : 'left-0 lg:left-20'}`}>
 
-      {/* Mobile Progress (Top) */}
       <div className="absolute top-0 left-0 right-0 h-0.5 bg-white/10 lg:hidden overflow-hidden">
         <div className="h-full bg-[#fa2d48] transition-all" style={{ width: `${(progress/(duration||1))*100}%` }} />
         <input type="range" min="0" max={duration || 100} value={progress} onChange={handleSeek} className="absolute inset-0 w-full opacity-0 cursor-pointer z-10" />
@@ -291,11 +272,7 @@ export default function Player() {
 
       <div className="max-w-[1800px] mx-auto grid grid-cols-2 lg:grid-cols-3 items-center gap-4 h-full relative">
         
-        {/* Left: Info */}
-        <div 
-          onClick={toggleLyricsMode}
-          className="flex items-center gap-3 min-w-0 cursor-pointer group/info"
-        >
+        <div onClick={toggleLyricsMode} className="flex items-center gap-3 min-w-0 cursor-pointer group/info">
           <div className="relative w-10 h-10 lg:w-14 lg:h-14 flex-shrink-0">
             <img src={currentSong.thumbnail} alt={currentSong.title} className="w-full h-full object-cover rounded-md shadow-lg group-hover/info:brightness-75 transition-all" />
             <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/info:opacity-100 transition-opacity">
@@ -308,7 +285,6 @@ export default function Player() {
           </div>
         </div>
 
-        {/* Center: Controls */}
         <div className="flex flex-col items-center gap-1">
           <div className="flex items-center gap-5 lg:gap-8">
             <button onClick={toggleShuffle} className={`hidden lg:block transition-colors ${shuffle ? 'text-[#fa2d48]' : 'text-white/30 hover:text-white'}`}><Shuffle size={16} /></button>
@@ -328,7 +304,6 @@ export default function Player() {
             </button>
           </div>
 
-          {/* Desktop Progress Bar */}
           <div className="hidden lg:flex items-center gap-3 w-full max-w-md">
             <span className="text-[10px] font-bold text-white/20 w-8 text-right tabular-nums">{formatTime(progress)}</span>
             <div className="relative flex-1 h-1 flex items-center group/scrub">
@@ -341,7 +316,6 @@ export default function Player() {
           </div>
         </div>
 
-        {/* Right: Tools */}
         <div className="flex items-center justify-end gap-2 lg:gap-6 pr-2">
           <button onClick={() => setLocalAddingToPlaylist(currentSong)} className="text-white/40 hover:text-[#fa2d48] transition-all"><ListPlus size={20} /></button>
           <button onClick={toggleLyricsMode} className={`transition-all ${isLyricsMode ? 'text-[#fa2d48]' : 'text-white/40 hover:text-white'}`}><Mic2 size={20} /></button>
@@ -358,21 +332,12 @@ export default function Player() {
         </div>
       </div>
 
-      {/* Quick Add Overlay */}
       {localAddingToPlaylist && (
-        <div 
-          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in text-white" 
-          onClick={() => setLocalAddingToPlaylist(null)}
-        >
-           <div 
-             className="bg-[#1c1c1e] border border-white/10 rounded-[2.5rem] w-full max-w-sm overflow-hidden shadow-2xl flex flex-col"
-             onClick={e => e.stopPropagation()}
-           >
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in text-white" onClick={() => setLocalAddingToPlaylist(null)}>
+           <div className="bg-[#1c1c1e] border border-white/10 rounded-[2.5rem] w-full max-w-sm overflow-hidden shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
               <div className="px-8 py-6 border-b border-white/5 flex items-center justify-between shrink-0">
                  <h3 className="text-xl font-black">Quick Save</h3>
-                 <button onClick={() => setLocalAddingToPlaylist(null)} className="p-2 bg-white/5 rounded-full text-white/40 hover:text-white transition-colors">
-                    <X size={20} />
-                 </button>
+                 <button onClick={() => setLocalAddingToPlaylist(null)} className="p-2 bg-white/5 rounded-full text-white/40 hover:text-white transition-colors"><X size={20} /></button>
               </div>
               <div className="p-4 overflow-y-auto no-scrollbar max-h-[440px]">
                  {userPlaylists.length === 0 ? (
@@ -383,9 +348,7 @@ export default function Player() {
                  ) : (
                    <div className="space-y-2">
                      {userPlaylists.map(p => (
-                       <button 
-                         key={p.id}
-                         onClick={async () => {
+                       <button key={p.id} onClick={async () => {
                            const result = await addSongToPlaylist(p.id, localAddingToPlaylist);
                            if (result?.error === 'limit_reached') {
                              setLocalAddingToPlaylist(null);
@@ -393,12 +356,8 @@ export default function Player() {
                              return;
                            }
                            setLocalAddingToPlaylist(null);
-                         }}
-                         className="w-full flex items-center gap-4 p-4 hover:bg-white/5 rounded-2xl transition-all group"
-                       >
-                          <div className="w-10 h-10 bg-[#fa2d48]/10 rounded-xl flex items-center justify-center text-[#fa2d48] group-hover:bg-[#fa2d48] group-hover:text-white transition-colors">
-                             <Plus size={20} />
-                          </div>
+                         }} className="w-full flex items-center gap-4 p-4 hover:bg-white/5 rounded-2xl transition-all group">
+                          <div className="w-10 h-10 bg-[#fa2d48]/10 rounded-xl flex items-center justify-center text-[#fa2d48] group-hover:bg-[#fa2d48] group-hover:text-white transition-colors"><Plus size={20} /></div>
                           <span className="font-bold text-base truncate">{p.name}</span>
                        </button>
                      ))}
