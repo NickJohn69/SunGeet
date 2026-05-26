@@ -13,6 +13,9 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState(null);
   const [error, setError] = useState(null);
+  const [promotionalEmail, setPromotionalEmail] = useState('');
+  const [promoLoading, setPromoLoading] = useState(false);
+  const [promoMessage, setPromoMessage] = useState(null);
 
   useEffect(() => {
     setMounted(true);
@@ -39,6 +42,37 @@ export default function AdminDashboard() {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const promoteUserByEmail = async (email) => {
+    if (!email) return;
+    setPromoLoading(true);
+    setPromoMessage(null);
+    try {
+      // 1. Find user by email in our stats data or via Supabase (if possible)
+      // Since we can't easily query auth.users from client without admin key,
+      // we'll use the record from our user_plan_details stats which has the ID.
+      const userToPromote = stats.user_plan_details.find(u => u.email.toLowerCase() === email.toLowerCase());
+      
+      if (!userToPromote) {
+        throw new Error("User not found in recent records. Try refreshing first.");
+      }
+
+      const { error: upgradeError } = await supabase
+        .from('user_plans')
+        .upsert({ user_id: userToPromote.user_id, plan: 'premium', updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+      
+      if (upgradeError) throw upgradeError;
+
+      setPromoMessage({ text: `Success! ${email} is now Premium.`, type: 'success' });
+      setPromotionalEmail('');
+      fetchAdminStats(); // Refresh the list
+    } catch (err) {
+      console.error('Promotion error:', err);
+      setPromoMessage({ text: err.message, type: 'error' });
+    } finally {
+      setPromoLoading(false);
     }
   };
 
@@ -267,6 +301,41 @@ export default function AdminDashboard() {
                         </div>
                      </div>
                   </div>
+
+                   {/* Manual User Promotion */}
+                   <div className="bg-[#1c1c1e] border border-white/5 rounded-[2.5rem] p-8">
+                      <h2 className="text-base font-black mb-4 flex items-center gap-2">
+                         <UserCheck size={18} className="text-[#fa2d48]" /> Manual Promotion
+                      </h2>
+                      <p className="text-[10px] text-white/40 uppercase font-black tracking-widest mb-6 leading-relaxed">Upgrade any user to Premium by email address.</p>
+                      
+                      <div className="space-y-4">
+                         <div className="relative group">
+                            <input 
+                              type="email" 
+                              placeholder="user@example.com"
+                              value={promotionalEmail}
+                              onChange={(e) => setPromotionalEmail(e.target.value)}
+                              className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-3.5 text-sm outline-none focus:border-[#fa2d48] transition-all"
+                            />
+                         </div>
+                         <button 
+                           onClick={() => promoteUserByEmail(promotionalEmail)}
+                           disabled={promoLoading || !promotionalEmail}
+                           className="w-full py-4 bg-[#fa2d48] hover:bg-[#fa2d48]/90 disabled:opacity-50 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2"
+                         >
+                            {promoLoading ? <Loader2 size={16} className="animate-spin" /> : 'Elevate to Premium'}
+                         </button>
+                         
+                         {promoMessage && (
+                           <div className={`p-4 rounded-xl text-[10px] font-bold text-center ${
+                             promoMessage.type === 'success' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'
+                           }`}>
+                             {promoMessage.text}
+                           </div>
+                         )}
+                      </div>
+                   </div>
 
                   {/* Deployment Status */}
                   <div className="bg-[#1c1c1e] border border-white/5 rounded-[2.5rem] p-8 flex flex-col items-center text-center">
