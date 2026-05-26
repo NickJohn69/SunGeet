@@ -24,16 +24,16 @@ async function test() {
     console.log('Player response status:', playerRes.status);
     const data = await playerRes.json();
     console.log('Playability Status:', data.playabilityStatus?.status);
-    
+
     if (data.playabilityStatus?.status === 'OK') {
-        console.log('Success!');
-        const formats = data.streamingData?.adaptiveFormats || [];
-        const audioFormats = formats.filter(f => f.mimeType?.startsWith('audio/'));
-        const format = audioFormats.find(f => f.mimeType?.includes('mp4')) || audioFormats[0];
-        console.log('URL found?', !!format?.url);
+      console.log('Success!');
+      const formats = data.streamingData?.adaptiveFormats || [];
+      const audioFormats = formats.filter(f => f.mimeType?.startsWith('audio/'));
+      const format = audioFormats.find(f => f.mimeType?.includes('mp4')) || audioFormats[0];
+      console.log('URL found?', !!format?.url);
     } else {
-        console.log('Reason:', data.playabilityStatus?.reason);
-        process.exit(1);
+      console.log('Reason:', data.playabilityStatus?.reason);
+      process.exit(1);
     }
   } catch (err) {
     console.error('Error:', err);

@@ -1,8 +1,12 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Mic2, Maximize2, Repeat, Shuffle, ListPlus, X, Plus } from 'lucide-react';
 import useStore from '../store/useStore';
+
+// Dynamically import ReactPlayer to prevent SSR issues
+const ReactPlayer = dynamic(() => import('react-player/lazy'), { ssr: false });
 
 const formatTime = (time) => {
   if (!time || isNaN(time)) return '0:00';
@@ -14,92 +18,28 @@ const formatTime = (time) => {
 export default function Player() {
   const { currentSong, isPlaying, setIsPlaying, volume, setVolume, playNext, playPrev, toggleLyricsMode, isLyricsMode, shuffle, toggleShuffle, repeat, toggleRepeat, playlist, userPlaylists, addSongToPlaylist, isSidebarOpen } = useStore();
   const [localAddingToPlaylist, setLocalAddingToPlaylist] = useState(null);
-  const audioRef = useRef(null);
+  const playerRef = useRef(null);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [mounted, setMounted] = useState(false);
   const [prevVolume, setPrevVolume] = useState(1);
-  const [isHovered, setIsHovered] = useState(false);
 
   useEffect(() => { setMounted(true); }, []);
 
-  const playPromiseRef = useRef(null);
-
-  // Consolidated playback controller to prevent "play() interrupted by pause()" errors
-  useEffect(() => {
-    if (!audioRef.current || !currentSong) return;
-    const audio = audioRef.current;
-    
-    // Reset progress on new track
-    const handleTrackChange = () => {
-      audio.currentTime = 0;
-    };
-
-    if (isPlaying) {
-      // Small delay to ensure browser is ready for new source if id just changed
-      const playPromise = audio.play();
-      playPromiseRef.current = playPromise;
-
-      if (playPromise !== undefined) {
-        playPromise
-          .then(() => {
-            playPromiseRef.current = null;
-          })
-          .catch(error => {
-            playPromiseRef.current = null;
-            if (error.name !== 'AbortError') {
-              console.error("Playback failed:", error);
-            }
-          });
-      }
-    } else {
-      // If a play is in progress, we wait for it to finish before pausing
-      if (playPromiseRef.current) {
-        playPromiseRef.current.then(() => {
-          audio.pause();
-        }).catch(() => {
-          // Play was aborted anyway, so we just ensure it's paused
-          audio.pause();
-        });
-      } else {
-        audio.pause();
-      }
-    }
-  }, [currentSong?.id, isPlaying]);
-
-  useEffect(() => {
-    if (audioRef.current) audioRef.current.volume = volume;
-  }, [volume]);
-
-  useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.loop = repeat === 'one';
-    }
-  }, [repeat]);
-
-  const handleTimeUpdate = () => {
-    if (audioRef.current) {
-      setProgress(audioRef.current.currentTime);
-      setDuration(audioRef.current.duration || 0);
-      window.dispatchEvent(new CustomEvent('playerTimeUpdate', { 
-        detail: { 
-          currentTime: audioRef.current.currentTime,
-          duration: audioRef.current.duration || 0
-        } 
-      }));
-    }
-  };
-
-  const handleLoadedMetadata = () => {
-    if (audioRef.current) {
-      setDuration(audioRef.current.duration);
-    }
+  const handleProgress = (state) => {
+    setProgress(state.playedSeconds);
+    window.dispatchEvent(new CustomEvent('playerTimeUpdate', { 
+      detail: { 
+        currentTime: state.playedSeconds,
+        duration: duration || 0
+      } 
+    }));
   };
 
   useEffect(() => {
     const lyricsSeekHandler = (e) => {
-      if (audioRef.current && !isNaN(e.detail.time)) {
-        audioRef.current.currentTime = e.detail.time;
+      if (playerRef.current && !isNaN(e.detail.time)) {
+        playerRef.current.seekTo(e.detail.time, 'seconds');
         setProgress(e.detail.time);
         if (!isPlaying) setIsPlaying(true);
       }
@@ -114,54 +54,67 @@ export default function Player() {
       window.removeEventListener('lyricsSeek', lyricsSeekHandler);
       window.removeEventListener('togglePlay', togglePlayHandler);
     };
-  }, [isPlaying, setIsPlaying]);
+  }, [isPlaying, setIsPlaying, duration]);
 
   const handleKeyDown = useCallback((e) => {
     const tag = e.target.tagName.toLowerCase();
     if (tag === 'input' || tag === 'textarea') return;
     switch (e.code) {
       case 'Space': e.preventDefault(); setIsPlaying(!isPlaying); break;
-      case 'ArrowRight': if (audioRef.current) audioRef.current.currentTime = Math.min(audioRef.current.currentTime + 5, duration); break;
-      case 'ArrowLeft': if (audioRef.current) audioRef.current.currentTime = Math.max(audioRef.current.currentTime - 5, 0); break;
+      case 'ArrowRight': if (playerRef.current) playerRef.current.seekTo(Math.min(progress + 5, duration)); break;
+      case 'ArrowLeft': if (playerRef.current) playerRef.current.seekTo(Math.max(progress - 5, 0)); break;
       case 'ArrowUp': e.preventDefault(); setVolume(Math.min(volume + 0.1, 1)); break;
       case 'ArrowDown': e.preventDefault(); setVolume(Math.max(volume - 0.1, 0)); break;
       case 'KeyM': if (volume > 0) { setPrevVolume(volume); setVolume(0); } else { setVolume(prevVolume || 1); } break;
       case 'KeyL': toggleLyricsMode(); break;
     }
-  }, [isPlaying, volume, duration, prevVolume, setIsPlaying, setVolume, toggleLyricsMode]);
+  }, [isPlaying, volume, duration, progress, prevVolume, setIsPlaying, setVolume, toggleLyricsMode]);
 
   useEffect(() => { window.addEventListener('keydown', handleKeyDown); return () => window.removeEventListener('keydown', handleKeyDown); }, [handleKeyDown]);
 
   const handleSeek = (e) => {
     const time = Number(e.target.value);
-    if (audioRef.current) { audioRef.current.currentTime = time; setProgress(time); }
+    if (playerRef.current) { 
+      playerRef.current.seekTo(time, 'seconds'); 
+      setProgress(time); 
+    }
   };
 
   const toggleMute = () => { if (volume > 0) { setPrevVolume(volume); setVolume(0); } else { setVolume(prevVolume || 1); } };
 
   if (!mounted || !currentSong) return null;
 
-  const audioSrc = currentSong.localUrl || `/api/stream?id=${encodeURIComponent(currentSong.id)}`;
+  const youtubeUrl = `https://www.youtube.com/watch?v=${currentSong.id}`;
 
   return (
     <div className={`fixed bottom-0 right-0 z-50 bg-[#1c1c1e]/90 backdrop-blur-2xl border-t border-white/5 px-6 py-3 select-none pointer-events-auto shadow-[0_-10px_40px_rgba(0,0,0,0.5)] transition-all duration-500 
       ${isSidebarOpen ? 'left-0 lg:left-64' : 'left-0 lg:left-20'}`}>
-      <audio
-        ref={audioRef}
-        src={audioSrc}
-        onTimeUpdate={handleTimeUpdate}
-        onLoadedMetadata={handleLoadedMetadata}
-        onEnded={() => {
-          if (repeat === 'one') {
-            audioRef.current.currentTime = 0;
-            audioRef.current.play().catch(() => {});
-          } else {
-            playNext();
-          }
-        }}
-        loop={repeat === 'one'}
-        autoPlay
-      />
+      
+      {/* Hidden YouTube Player */}
+      <div className="hidden">
+        <ReactPlayer
+          ref={playerRef}
+          url={youtubeUrl}
+          playing={isPlaying}
+          volume={volume}
+          onProgress={handleProgress}
+          onDuration={setDuration}
+          onEnded={() => {
+            if (repeat === 'one') {
+              playerRef.current.seekTo(0);
+            } else {
+              playNext();
+            }
+          }}
+          config={{
+            youtube: {
+              playerVars: { autoplay: 1, controls: 0, modestbranding: 1 }
+            }
+          }}
+          width="0"
+          height="0"
+        />
+      </div>
 
       {/* Mobile Progress (Top) */}
       <div className="absolute top-0 left-0 right-0 h-0.5 bg-white/10 lg:hidden overflow-hidden">
@@ -291,4 +244,3 @@ export default function Player() {
     </div>
   );
 }
-
