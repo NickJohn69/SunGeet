@@ -59,13 +59,17 @@ export default function AdminDashboard() {
         throw new Error("User not found in recent records. Try refreshing first.");
       }
 
+      const { session } = useAuthStore.getState();
+      
       const response = await fetch('/api/admin/promote', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`
+        },
         body: JSON.stringify({
           userId: userToPromote.user_id,
-          plan: 'premium',
-          adminEmail: user?.email
+          plan: 'premium'
         })
       });
 
