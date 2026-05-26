@@ -17,6 +17,9 @@ export default function RootLayout({ children }) {
 
   return (
     <html lang="en" className="dark" style={{ colorScheme: 'dark' }}>
+      <head>
+        <title>SunGeet : Geet Suna Moj Gara</title>
+      </head>
       <body className="antialiased bg-background text-foreground">
         <div className="flex h-screen overflow-hidden">
           <Sidebar />
