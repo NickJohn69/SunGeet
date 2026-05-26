@@ -6,7 +6,7 @@ import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Mic2, Maximize2, 
 import useStore from '../store/useStore';
 
 // Dynamically import ReactPlayer to prevent SSR issues
-const ReactPlayer = dynamic(() => import('react-player/lazy'), { ssr: false });
+const ReactPlayer = dynamic(() => import('react-player'), { ssr: false });
 
 const formatTime = (time) => {
   if (!time || isNaN(time)) return '0:00';
