@@ -11,16 +11,18 @@ export default function LoginModal({ isOpen, onClose }) {
   const [name, setName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
   const { login, signup } = useAuthStore();
 
   const handleAuth = async (e) => {
     e.preventDefault();
     setIsLoading(true);
     setError(null);
+    setSuccess(null);
     try {
       if (isSignUp) {
         await signup(email, password, name);
-        alert("Verification email sent! Please check your inbox.");
+        setSuccess("Verification email sent! Please check your inbox.");
         setIsSignUp(false);
       } else {
         await login(email, password);
@@ -48,6 +50,12 @@ export default function LoginModal({ isOpen, onClose }) {
             {error && (
               <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 text-xs font-bold text-center">
                 {error}
+              </div>
+            )}
+
+            {success && (
+              <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-500 text-xs font-bold text-center">
+                {success}
               </div>
             )}
 
