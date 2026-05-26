@@ -1,68 +1,42 @@
 import ytdl from '@distube/ytdl-core';
 import { NextResponse } from 'next/server';
 
+export const runtime = 'nodejs';
+
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
-  const id = searchParams.get('id');
+  const id = searchParams.get('id')?.trim();
 
   if (!id) return NextResponse.json({ error: 'Video ID required' }, { status: 400 });
 
   const url = `https://www.youtube.com/watch?v=${id}`;
-  const userAgent = request.headers.get('user-agent') || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)';
-  
+
   try {
-    // Get info first to find a good audio format
     const info = await ytdl.getInfo(url, {
       requestOptions: {
         headers: {
-          'User-Agent': userAgent,
-          'Cookie': '' // Optional: Add cookie support here if needed for restricted videos
+          // Use a mobile UA — less likely to be blocked by YouTube
+          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
         }
       }
     });
 
-    // Pick best audio format
-    const format = ytdl.chooseFormat(info.formats, { 
-      quality: 'highestaudio',
-      filter: 'audioonly'
-    });
+    // Prefer m4a (mp4 audio) for broadest browser support, fall back to any audio
+    const format =
+      ytdl.chooseFormat(info.formats, { quality: 'highestaudio', filter: f => f.container === 'm4a' }) ||
+      ytdl.chooseFormat(info.formats, { quality: 'highestaudio', filter: 'audioonly' });
 
-    if (!format || !format.url) throw new Error("No audio format found");
-    const streamUrl = format.url;
+    if (!format?.url) throw new Error('No audio format found in YouTube response');
 
-    // Proxy the stream with proper Range header support for scrubbing
-    const fetchHeaders = new Headers();
-    fetchHeaders.set('User-Agent', userAgent);
-    fetchHeaders.set('Referer', 'https://www.youtube.com/');
-    
-    const range = request.headers.get('range');
-    if (range) fetchHeaders.set('Range', range);
+    // ✅ REDIRECT instead of proxy — browser streams directly from YouTube CDN
+    // This eliminates Vercel's 30s serverless timeout entirely.
+    return Response.redirect(format.url, 307);
 
-    const response = await fetch(streamUrl, {
-      headers: fetchHeaders
-    });
-
-    if (!response.ok) {
-      throw new Error(`YouTube stream responded with ${response.status}`);
-    }
-
-    const responseHeaders = new Headers(response.headers);
-    responseHeaders.set('Access-Control-Allow-Origin', '*');
-    
-    // Ensure accurate Content-Type for browser playback
-    const mimeType = format.mimeType?.split(';')[0] || 'audio/mp4';
-    responseHeaders.set('Content-Type', mimeType);
-    responseHeaders.delete('content-encoding');
-    
-    return new Response(response.body, {
-      status: response.status,
-      headers: responseHeaders
-    });
   } catch (error) {
-    console.error("Stream errorDetails:", error);
-    return NextResponse.json({ 
-      error: 'Failed to stream', 
-      details: error.message 
+    console.error('[stream] Error:', error.message);
+    return NextResponse.json({
+      error: 'Failed to get stream URL',
+      details: error.message
     }, { status: 500 });
   }
 }
