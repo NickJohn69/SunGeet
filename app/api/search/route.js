@@ -1,4 +1,4 @@
-import ytSearch from 'yt-search';
+import play from 'play-dl';
 import { NextResponse } from 'next/server';
 
 export async function GET(request) {
@@ -10,14 +10,18 @@ export async function GET(request) {
   }
 
   try {
-    const r = await ytSearch(q);
-    const videos = r.videos.slice(0, 30).map(v => ({
-      id: v.videoId,
+    const results = await play.search(q, {
+      limit: 30,
+      source: { youtube: 'video' }
+    });
+
+    const videos = results.map(v => ({
+      id: v.id,
       title: v.title,
-      thumbnail: v.thumbnail,
-      duration: v.timestamp,
-      durationSeconds: v.seconds || 0,
-      author: v.author.name
+      thumbnail: v.thumbnails[0]?.url || '',
+      duration: v.durationRaw,
+      durationSeconds: v.durationInSec || 0,
+      author: v.channel?.name || 'Unknown Artist'
     }));
 
     return NextResponse.json(videos);

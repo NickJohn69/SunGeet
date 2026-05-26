@@ -1,17 +1,5 @@
-import { create } from 'youtube-dl-exec';
+import ytdl from '@distube/ytdl-core';
 import { NextResponse } from 'next/server';
-import path from 'path';
-
-// Resolve absolute path to yt-dlp binary, handling Windows .exe extension
-const binaryPath = path.resolve(
-  process.cwd(), 
-  'node_modules', 
-  'youtube-dl-exec', 
-  'bin', 
-  process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp'
-);
-
-const youtubedl = create(binaryPath);
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
@@ -23,19 +11,24 @@ export async function GET(request) {
   const userAgent = request.headers.get('user-agent') || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)';
   
   try {
-    const output = await youtubedl(url, {
-      dumpJson: true,
-      format: 'bestaudio[ext=m4a]/bestaudio',
-      noWarnings: true,
-      noCheckCertificate: true,
-      referer: 'https://www.youtube.com/',
-      userAgent: userAgent,
-      extractorArgs: 'youtube:player_client=ios,web,web_creator',
-      forceIpv4: true
+    // Get info first to find a good audio format
+    const info = await ytdl.getInfo(url, {
+      requestOptions: {
+        headers: {
+          'User-Agent': userAgent,
+          'Cookie': '' // Optional: Add cookie support here if needed for restricted videos
+        }
+      }
     });
 
-    if (!output.url) throw new Error("No audio URL found in yt-dlp output");
-    const streamUrl = output.url;
+    // Pick best audio format
+    const format = ytdl.chooseFormat(info.formats, { 
+      quality: 'highestaudio',
+      filter: 'audioonly'
+    });
+
+    if (!format || !format.url) throw new Error("No audio format found");
+    const streamUrl = format.url;
 
     // Proxy the stream with proper Range header support for scrubbing
     const fetchHeaders = new Headers();
@@ -56,21 +49,20 @@ export async function GET(request) {
     const responseHeaders = new Headers(response.headers);
     responseHeaders.set('Access-Control-Allow-Origin', '*');
     
-    // Dynamically set Content-Type based on yt-dlp reported extension
-    const ext = output.ext || 'm4a';
-    const mimeType = ext === 'm4a' || ext === 'mp4' ? 'audio/mp4' : 
-                   ext === 'webm' ? 'audio/webm' : 
-                   ext === 'mp3' ? 'audio/mpeg' : 'audio/mp4';
-    
+    // Ensure accurate Content-Type for browser playback
+    const mimeType = format.mimeType?.split(';')[0] || 'audio/mp4';
     responseHeaders.set('Content-Type', mimeType);
-    responseHeaders.delete('content-encoding'); // Prevent issues with dual compression
+    responseHeaders.delete('content-encoding');
     
     return new Response(response.body, {
       status: response.status,
       headers: responseHeaders
     });
   } catch (error) {
-    console.error("Stream error:", error);
-    return NextResponse.json({ error: 'Failed to stream' }, { status: 500 });
+    console.error("Stream errorDetails:", error);
+    return NextResponse.json({ 
+      error: 'Failed to stream', 
+      details: error.message 
+    }, { status: 500 });
   }
 }
