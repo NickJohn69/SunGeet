@@ -7,17 +7,22 @@ export default function Auth() {
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [message, setMessage] = useState({ text: '', type: '' }); // type: 'error' or 'success'
   const [isRegistering, setIsRegistering] = useState(false);
 
   const handleAuth = async (e) => {
     e.preventDefault();
     setLoading(true);
+    setMessage({ text: '', type: '' });
 
     try {
       if (isRegistering) {
         const { data, error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
-        alert('Check your email for the confirmation link!');
+        setMessage({ 
+          text: 'Check your email for the confirmation link! You can sign in once verified.', 
+          type: 'success' 
+        });
         if (data?.session) setSession(data.session);
       } else {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
@@ -25,7 +30,10 @@ export default function Auth() {
         setSession(data.session);
       }
     } catch (error) {
-      alert(error.error_description || error.message);
+      setMessage({ 
+        text: error.error_description || error.message, 
+        type: 'error' 
+      });
     } finally {
       setLoading(false);
     }
@@ -36,6 +44,12 @@ export default function Auth() {
       <div className="auth-card">
         <h1>{isRegistering ? 'Create Account' : 'Welcome Back'}</h1>
         <p className="subtitle">{isRegistering ? 'Join SunGeet today' : 'Sign in to continue'}</p>
+        
+        {message.text && (
+          <div className={`auth-message ${message.type}`}>
+            {message.text}
+          </div>
+        )}
         
         <form onSubmit={handleAuth}>
           <div className="input-group">
@@ -103,7 +117,26 @@ export default function Auth() {
         }
         .subtitle {
           color: #888;
-          margin-bottom: 32px;
+          margin-bottom: 24px;
+        }
+        .auth-message {
+          padding: 12px 16px;
+          border-radius: 12px;
+          font-size: 0.85rem;
+          font-weight: 500;
+          margin-bottom: 24px;
+          text-align: left;
+          line-height: 1.4;
+        }
+        .auth-message.error {
+          background: rgba(250, 45, 72, 0.1);
+          border: 1px solid rgba(250, 45, 72, 0.2);
+          color: #fa2d48;
+        }
+        .auth-message.success {
+          background: rgba(34, 197, 94, 0.1);
+          border: 1px solid rgba(34, 197, 94, 0.2);
+          color: #22c55e;
         }
         form {
           display: flex;
