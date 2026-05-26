@@ -12,19 +12,17 @@ export async function GET(request) {
   if (!id) return NextResponse.json({ error: 'Video ID required' }, { status: 400 });
 
   try {
-    // 1. Request video info using Android client
+    // 1. Request video info using TVHTML5 client
     const playerRes = await fetch(INNERTUBE_PLAYER_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'User-Agent': 'com.google.android.youtube/19.09.37 (Linux; U; Android 11) gzip',
       },
       body: JSON.stringify({
         context: {
           client: {
-            clientName: 'ANDROID',
-            clientVersion: '19.09.37',
-            androidSdkVersion: 30,
+            clientName: 'TVHTML5',
+            clientVersion: '7.20230405.08.01',
             hl: 'en',
             gl: 'US',
           }
