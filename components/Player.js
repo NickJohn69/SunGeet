@@ -11,95 +11,217 @@ const formatTime = (time) => {
   return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
 };
 
+// Load YouTube IFrame API script once
+let ytApiReady = false;
+let ytApiPromise = null;
+
+function loadYTApi() {
+  if (ytApiReady) return Promise.resolve();
+  if (ytApiPromise) return ytApiPromise;
+
+  ytApiPromise = new Promise((resolve) => {
+    if (typeof window === 'undefined') return;
+
+    // If API is already loaded
+    if (window.YT && window.YT.Player) {
+      ytApiReady = true;
+      resolve();
+      return;
+    }
+
+    // Set up the callback before loading the script
+    const prevCallback = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => {
+      ytApiReady = true;
+      if (prevCallback) prevCallback();
+      resolve();
+    };
+
+    // Check if script already exists
+    if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      document.head.appendChild(tag);
+    }
+  });
+
+  return ytApiPromise;
+}
+
 export default function Player() {
   const { currentSong, isPlaying, setIsPlaying, volume, setVolume, playNext, playPrev, toggleLyricsMode, isLyricsMode, shuffle, toggleShuffle, repeat, toggleRepeat, playlist, userPlaylists, addSongToPlaylist, isSidebarOpen } = useStore();
   const [localAddingToPlaylist, setLocalAddingToPlaylist] = useState(null);
-  const audioRef = useRef(null);
+  const ytPlayerRef = useRef(null);
+  const containerRef = useRef(null);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [mounted, setMounted] = useState(false);
   const [prevVolume, setPrevVolume] = useState(1);
-  const [isHovered, setIsHovered] = useState(false);
+  const [playerReady, setPlayerReady] = useState(false);
+  const progressInterval = useRef(null);
+  const currentSongIdRef = useRef(null);
+  const isPlayingRef = useRef(false);
 
   useEffect(() => { setMounted(true); }, []);
 
-  const playPromiseRef = useRef(null);
+  // Keep refs in sync
+  useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
 
-  // Consolidated playback controller to prevent "play() interrupted by pause()" errors
+  // Initialize YouTube IFrame Player
   useEffect(() => {
-    if (!audioRef.current || !currentSong) return;
-    const audio = audioRef.current;
-    
-    // Reset progress on new track
-    const handleTrackChange = () => {
-      audio.currentTime = 0;
-    };
+    if (!mounted) return;
 
-    if (isPlaying) {
-      // Small delay to ensure browser is ready for new source if id just changed
-      const playPromise = audio.play();
-      playPromiseRef.current = playPromise;
+    loadYTApi().then(() => {
+      if (ytPlayerRef.current) return; // Already initialized
 
-      if (playPromise !== undefined) {
-        playPromise
-          .then(() => {
-            playPromiseRef.current = null;
-          })
-          .catch(error => {
-            playPromiseRef.current = null;
-            if (error.name !== 'AbortError') {
-              console.error("Playback failed:", error);
+      // Create a container div for the player
+      const div = document.createElement('div');
+      div.id = 'yt-player-hidden';
+      div.style.position = 'fixed';
+      div.style.top = '-9999px';
+      div.style.left = '-9999px';
+      div.style.width = '1px';
+      div.style.height = '1px';
+      div.style.opacity = '0';
+      div.style.pointerEvents = 'none';
+      document.body.appendChild(div);
+
+      ytPlayerRef.current = new window.YT.Player('yt-player-hidden', {
+        height: '1',
+        width: '1',
+        playerVars: {
+          autoplay: 0,
+          controls: 0,
+          disablekb: 1,
+          fs: 0,
+          modestbranding: 1,
+          rel: 0,
+          showinfo: 0,
+          origin: window.location.origin,
+        },
+        events: {
+          onReady: () => {
+            setPlayerReady(true);
+            if (ytPlayerRef.current) {
+              ytPlayerRef.current.setVolume(volume * 100);
             }
-          });
+          },
+          onStateChange: (event) => {
+            const YT = window.YT;
+            if (event.data === YT.PlayerState.ENDED) {
+              if (isPlayingRef.current) {
+                const store = useStore.getState();
+                if (store.repeat === 'one') {
+                  ytPlayerRef.current.seekTo(0);
+                  ytPlayerRef.current.playVideo();
+                } else {
+                  store.playNext();
+                }
+              }
+            }
+            if (event.data === YT.PlayerState.PLAYING) {
+              const dur = ytPlayerRef.current.getDuration();
+              if (dur) setDuration(dur);
+            }
+          },
+          onError: (event) => {
+            console.error('YouTube Player error:', event.data);
+            // Auto-skip to next song on error
+            setTimeout(() => {
+              const store = useStore.getState();
+              store.playNext();
+            }, 1500);
+          },
+        },
+      });
+    });
+
+    return () => {
+      if (progressInterval.current) {
+        clearInterval(progressInterval.current);
       }
-    } else {
-      // If a play is in progress, we wait for it to finish before pausing
-      if (playPromiseRef.current) {
-        playPromiseRef.current.then(() => {
-          audio.pause();
-        }).catch(() => {
-          // Play was aborted anyway, so we just ensure it's paused
-          audio.pause();
-        });
+    };
+  }, [mounted]);
+
+  // Load new video when song changes
+  useEffect(() => {
+    if (!playerReady || !ytPlayerRef.current || !currentSong) return;
+
+    if (currentSongIdRef.current !== currentSong.id) {
+      currentSongIdRef.current = currentSong.id;
+      setProgress(0);
+      setDuration(0);
+
+      ytPlayerRef.current.loadVideoById({
+        videoId: currentSong.id,
+        startSeconds: 0,
+      });
+    }
+  }, [currentSong?.id, playerReady]);
+
+  // Play/Pause control
+  useEffect(() => {
+    if (!playerReady || !ytPlayerRef.current) return;
+
+    try {
+      if (isPlaying) {
+        ytPlayerRef.current.playVideo();
       } else {
-        audio.pause();
+        ytPlayerRef.current.pauseVideo();
       }
+    } catch (e) {
+      // Player might not be ready yet
     }
-  }, [currentSong?.id, isPlaying]);
+  }, [isPlaying, playerReady]);
 
+  // Volume control
   useEffect(() => {
-    if (audioRef.current) audioRef.current.volume = volume;
-  }, [volume]);
+    if (!playerReady || !ytPlayerRef.current) return;
+    try {
+      ytPlayerRef.current.setVolume(volume * 100);
+      if (volume === 0) {
+        ytPlayerRef.current.mute();
+      } else {
+        ytPlayerRef.current.unMute();
+      }
+    } catch (e) {}
+  }, [volume, playerReady]);
 
+  // Progress tracking interval
   useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.loop = repeat === 'one';
+    if (progressInterval.current) {
+      clearInterval(progressInterval.current);
     }
-  }, [repeat]);
 
-  const handleTimeUpdate = () => {
-    if (audioRef.current) {
-      setProgress(audioRef.current.currentTime);
-      setDuration(audioRef.current.duration || 0);
-      window.dispatchEvent(new CustomEvent('playerTimeUpdate', { 
-        detail: { 
-          currentTime: audioRef.current.currentTime,
-          duration: audioRef.current.duration || 0
-        } 
-      }));
+    if (isPlaying && playerReady && ytPlayerRef.current) {
+      progressInterval.current = setInterval(() => {
+        try {
+          if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') {
+            const currentTime = ytPlayerRef.current.getCurrentTime() || 0;
+            const dur = ytPlayerRef.current.getDuration() || 0;
+            setProgress(currentTime);
+            if (dur > 0) setDuration(dur);
+            
+            window.dispatchEvent(new CustomEvent('playerTimeUpdate', {
+              detail: { currentTime, duration: dur }
+            }));
+          }
+        } catch (e) {}
+      }, 250);
     }
-  };
 
-  const handleLoadedMetadata = () => {
-    if (audioRef.current) {
-      setDuration(audioRef.current.duration);
-    }
-  };
+    return () => {
+      if (progressInterval.current) {
+        clearInterval(progressInterval.current);
+      }
+    };
+  }, [isPlaying, playerReady]);
 
+  // Lyrics seek handler
   useEffect(() => {
     const lyricsSeekHandler = (e) => {
-      if (audioRef.current && !isNaN(e.detail.time)) {
-        audioRef.current.currentTime = e.detail.time;
+      if (playerReady && ytPlayerRef.current && !isNaN(e.detail.time)) {
+        ytPlayerRef.current.seekTo(e.detail.time, true);
         setProgress(e.detail.time);
         if (!isPlaying) setIsPlaying(true);
       }
@@ -114,54 +236,52 @@ export default function Player() {
       window.removeEventListener('lyricsSeek', lyricsSeekHandler);
       window.removeEventListener('togglePlay', togglePlayHandler);
     };
-  }, [isPlaying, setIsPlaying]);
+  }, [isPlaying, setIsPlaying, playerReady]);
 
+  // Keyboard shortcuts
   const handleKeyDown = useCallback((e) => {
     const tag = e.target.tagName.toLowerCase();
     if (tag === 'input' || tag === 'textarea') return;
     switch (e.code) {
       case 'Space': e.preventDefault(); setIsPlaying(!isPlaying); break;
-      case 'ArrowRight': if (audioRef.current) audioRef.current.currentTime = Math.min(audioRef.current.currentTime + 5, duration); break;
-      case 'ArrowLeft': if (audioRef.current) audioRef.current.currentTime = Math.max(audioRef.current.currentTime - 5, 0); break;
+      case 'ArrowRight': 
+        if (playerReady && ytPlayerRef.current) {
+          const newTime = Math.min(progress + 5, duration);
+          ytPlayerRef.current.seekTo(newTime, true);
+          setProgress(newTime);
+        }
+        break;
+      case 'ArrowLeft': 
+        if (playerReady && ytPlayerRef.current) {
+          const newTime = Math.max(progress - 5, 0);
+          ytPlayerRef.current.seekTo(newTime, true);
+          setProgress(newTime);
+        }
+        break;
       case 'ArrowUp': e.preventDefault(); setVolume(Math.min(volume + 0.1, 1)); break;
       case 'ArrowDown': e.preventDefault(); setVolume(Math.max(volume - 0.1, 0)); break;
       case 'KeyM': if (volume > 0) { setPrevVolume(volume); setVolume(0); } else { setVolume(prevVolume || 1); } break;
       case 'KeyL': toggleLyricsMode(); break;
     }
-  }, [isPlaying, volume, duration, prevVolume, setIsPlaying, setVolume, toggleLyricsMode]);
+  }, [isPlaying, volume, duration, progress, prevVolume, setIsPlaying, setVolume, toggleLyricsMode, playerReady]);
 
   useEffect(() => { window.addEventListener('keydown', handleKeyDown); return () => window.removeEventListener('keydown', handleKeyDown); }, [handleKeyDown]);
 
   const handleSeek = (e) => {
     const time = Number(e.target.value);
-    if (audioRef.current) { audioRef.current.currentTime = time; setProgress(time); }
+    if (playerReady && ytPlayerRef.current) {
+      ytPlayerRef.current.seekTo(time, true);
+      setProgress(time);
+    }
   };
 
   const toggleMute = () => { if (volume > 0) { setPrevVolume(volume); setVolume(0); } else { setVolume(prevVolume || 1); } };
 
   if (!mounted || !currentSong) return null;
 
-  const audioSrc = currentSong.localUrl || `/api/stream?id=${encodeURIComponent(currentSong.id)}`;
-
   return (
     <div className={`fixed bottom-0 right-0 z-50 bg-[#1c1c1e]/90 backdrop-blur-2xl border-t border-white/5 px-6 py-3 select-none pointer-events-auto shadow-[0_-10px_40px_rgba(0,0,0,0.5)] transition-all duration-500 
       ${isSidebarOpen ? 'left-0 lg:left-64' : 'left-0 lg:left-20'}`}>
-      <audio
-        ref={audioRef}
-        src={audioSrc}
-        onTimeUpdate={handleTimeUpdate}
-        onLoadedMetadata={handleLoadedMetadata}
-        onEnded={() => {
-          if (repeat === 'one') {
-            audioRef.current.currentTime = 0;
-            audioRef.current.play().catch(() => {});
-          } else {
-            playNext();
-          }
-        }}
-        loop={repeat === 'one'}
-        autoPlay
-      />
 
       {/* Mobile Progress (Top) */}
       <div className="absolute top-0 left-0 right-0 h-0.5 bg-white/10 lg:hidden overflow-hidden">
@@ -291,4 +411,3 @@ export default function Player() {
     </div>
   );
 }
-
