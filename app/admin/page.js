@@ -59,11 +59,19 @@ export default function AdminDashboard() {
         throw new Error("User not found in recent records. Try refreshing first.");
       }
 
-      const { error: upgradeError } = await supabase
-        .from('user_plans')
-        .upsert({ user_id: userToPromote.user_id, plan: 'premium', updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+      const response = await fetch('/api/admin/promote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: userToPromote.user_id,
+          plan: 'premium',
+          adminEmail: user?.email
+        })
+      });
+
+      const result = await response.json();
       
-      if (upgradeError) throw upgradeError;
+      if (!response.ok) throw new Error(result.error || 'Promotion failed');
 
       setPromoMessage({ text: `Success! ${email} is now Premium.`, type: 'success' });
       setPromotionalEmail('');
