@@ -14,7 +14,7 @@ const useAuthStore = create(
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
           set({ session, user: session.user });
-          const premiumEmails = ['nickjohnpokharel13@gmail.com', 'prasannaaryal000@gmail.com'];
+          const premiumEmails = ['nickjohnpokharel13@gmail.com', 'prasannaaryal000@gmail.com', 'nickjohnpokharel18@gmail.com'];
           if (premiumEmails.includes(session.user.email)) {
             set({ userPlan: 'premium' });
           } else {
@@ -84,7 +84,7 @@ const useAuthStore = create(
           }
 
           // Admins/Whitelisted users are always premium
-          const premiumEmails = ['nickjohnpokharel13@gmail.com', 'prasannaaryal000@gmail.com'];
+          const premiumEmails = ['nickjohnpokharel13@gmail.com', 'prasannaaryal000@gmail.com', 'nickjohnpokharel18@gmail.com'];
           if (premiumEmails.includes(get().user?.email)) {
             set({ userPlan: 'premium' });
             return;
@@ -100,11 +100,11 @@ const useAuthStore = create(
             console.log(`[SunGeet] Current Plan Set To: ${data.plan}`);
             set({ userPlan: data.plan || 'free' });
           } else {
-             set({ userPlan: 'free' });
+            set({ userPlan: 'free' });
           }
         } catch (err) {
           console.error("[SunGeet] Error in fetchUserPlan:", err.message);
-          set({ userPlan: 'free' }); 
+          set({ userPlan: 'free' });
         }
       },
 
