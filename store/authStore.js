@@ -14,8 +14,8 @@ const useAuthStore = create(
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
           set({ session, user: session.user });
-          // Super Admins are automatically Premium
-          if (session.user.email === 'nickjohnpokharel13@gmail.com') {
+          const premiumEmails = ['nickjohnpokharel13@gmail.com', 'prasannaaryal000@gmail.com'];
+          if (premiumEmails.includes(session.user.email)) {
             set({ userPlan: 'premium' });
           } else {
             await get().fetchUserPlan(session.user.id);
@@ -41,6 +41,7 @@ const useAuthStore = create(
           supabase.removeChannel(planSubscription);
         }
 
+        console.log(`[SunGeet] Subscribing to realtime plan changes for: ${userId}`);
         const channel = supabase
           .channel(`public:user_plans:user_id=eq.${userId}`)
           .on(
@@ -52,11 +53,13 @@ const useAuthStore = create(
               filter: `user_id=eq.${userId}`,
             },
             (payload) => {
-              console.log('Plan updated in real-time:', payload.new.plan);
+              console.log('[SunGeet] Realtime Update Received:', payload.new.plan);
               set({ userPlan: payload.new.plan });
             }
           )
-          .subscribe();
+          .subscribe((status) => {
+            console.log(`[SunGeet] Realtime Status for ${userId}:`, status);
+          });
 
         set({ planSubscription: channel });
       },
@@ -67,35 +70,41 @@ const useAuthStore = create(
       },
 
       fetchUserPlan: async (userId) => {
+        if (!userId) return;
         try {
+          console.log(`[SunGeet] Fetching plan from DB for: ${userId}`);
           const { data, error } = await supabase
             .from('user_plans')
             .select('plan')
             .eq('user_id', userId)
             .single();
 
-          // Super Admins are always premium regardless of what's in the DB
-          if (get().isSuperAdmin()) {
+          if (error) {
+            console.warn(`[SunGeet] Plan fetch notice:`, error.message);
+          }
+
+          // Admins/Whitelisted users are always premium
+          const premiumEmails = ['nickjohnpokharel13@gmail.com', 'prasannaaryal000@gmail.com'];
+          if (premiumEmails.includes(get().user?.email)) {
             set({ userPlan: 'premium' });
             return;
           }
 
           if (error && error.code === 'PGRST116') {
-            // No plan row exists in DB — this shouldn't happen if the trigger is installed,
-            // but we'll insert a default 'free' plan as a fallback.
+            console.log("[SunGeet] No plan found, creating default 'free' plan");
             await supabase
               .from('user_plans')
               .insert([{ user_id: userId, plan: 'free' }]);
             set({ userPlan: 'free' });
           } else if (data) {
+            console.log(`[SunGeet] Current Plan Set To: ${data.plan}`);
             set({ userPlan: data.plan || 'free' });
           } else {
-             // Fallback if data is missing but no error
              set({ userPlan: 'free' });
           }
         } catch (err) {
-          console.error("Error fetching user plan:", err.message);
-          set({ userPlan: 'free' }); // Default to free on error
+          console.error("[SunGeet] Error in fetchUserPlan:", err.message);
+          set({ userPlan: 'free' }); 
         }
       },
 
