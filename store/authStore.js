@@ -18,7 +18,8 @@ const useAuthStore = create(
           if (session.user.email === 'nickjohnpokharel13@gmail.com') {
             set({ userPlan: 'premium' });
           } else {
-            get().fetchUserPlan(session.user.id);
+            await get().fetchUserPlan(session.user.id);
+            get().subscribeToPlanChanges(session.user.id);
           }
         }
       },
@@ -30,7 +31,34 @@ const useAuthStore = create(
         });
         if (session?.user) {
           get().fetchUserPlan(session.user.id);
+          get().subscribeToPlanChanges(session.user.id);
         }
+      },
+
+      subscribeToPlanChanges: (userId) => {
+        const { planSubscription } = get();
+        if (planSubscription) {
+          supabase.removeChannel(planSubscription);
+        }
+
+        const channel = supabase
+          .channel(`public:user_plans:user_id=eq.${userId}`)
+          .on(
+            'postgres_changes',
+            {
+              event: 'UPDATE',
+              schema: 'public',
+              table: 'user_plans',
+              filter: `user_id=eq.${userId}`,
+            },
+            (payload) => {
+              console.log('Plan updated in real-time:', payload.new.plan);
+              set({ userPlan: payload.new.plan });
+            }
+          )
+          .subscribe();
+
+        set({ planSubscription: channel });
       },
 
       isSuperAdmin: () => {
@@ -164,7 +192,14 @@ const useAuthStore = create(
         session: state.session,
         user: state.user,
         userPlan: state.userPlan
-      })
+      }),
+      onRehydrateStorage: () => (state) => {
+        // After hydration, if we have a user, ensure we have a fresh plan and subscription
+        if (state?.user) {
+          state.fetchUserPlan(state.user.id);
+          state.subscribeToPlanChanges(state.user.id);
+        }
+      }
     }
   )
 );
