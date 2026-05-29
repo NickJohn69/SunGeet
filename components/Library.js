@@ -1,7 +1,8 @@
 'use client';
 
-import { Play, Pause, ChevronRight, MoreHorizontal, Plus, Check, Shuffle, ListPlus, X } from 'lucide-react';
+import { Play, Pause, ChevronRight, MoreHorizontal, Plus, Check, Shuffle, ListPlus, X, Sparkles } from 'lucide-react';
 import useStore from '../store/useStore';
+import { getPersonalisedQueries, getTopArtists } from '../store/useStore';
 import PremiumGuard from './PremiumGuard';
 import { useEffect, useState } from 'react';
 
@@ -13,15 +14,54 @@ export default function Library() {
   
   const [mounted, setMounted] = useState(false);
   const [recommendations, setRecommendations] = useState([]);
+  const [personalRecs, setPersonalRecs] = useState([]);
   const [loadingRecs, setLoadingRecs] = useState(false);
+  const [loadingPersonal, setLoadingPersonal] = useState(false);
   const [addingToPlaylist, setAddingToPlaylist] = useState(null); // song object
   const [showGuard, setShowGuard] = useState(false);
+  const [hasPersonalHistory, setHasPersonalHistory] = useState(false);
 
   useEffect(() => { 
     setMounted(true);
     fetchPlaylists();
   }, []);
 
+  // Fetch personalised "For You" recommendations based on listening history
+  useEffect(() => {
+    if (!mounted) return;
+
+    const topArtists = getTopArtists(3);
+    setHasPersonalHistory(topArtists.length > 0);
+
+    if (topArtists.length > 0) {
+      setLoadingPersonal(true);
+      const fetchPersonal = async () => {
+        try {
+          const queries = getPersonalisedQueries();
+          const results = await Promise.all(
+            queries.slice(0, 4).map(q =>
+              fetch(`/api/search?q=${encodeURIComponent(q)}`)
+                .then(res => res.json())
+                .catch(() => [])
+            )
+          );
+
+          const allSongs = results.flat().filter(song => song && song.id);
+          const uniqueSongs = Array.from(new Map(allSongs.map(s => [s.id, s])).values());
+          const shuffled = uniqueSongs.sort(() => Math.random() - 0.5);
+          
+          setPersonalRecs(shuffled.slice(0, 24));
+          setLoadingPersonal(false);
+        } catch (err) {
+          console.error('Error fetching personal recs:', err);
+          setLoadingPersonal(false);
+        }
+      };
+      fetchPersonal();
+    }
+  }, [mounted]);
+
+  // Fetch general trending recommendations
   useEffect(() => {
     if (mounted) {
       setLoadingRecs(true);
@@ -51,11 +91,19 @@ export default function Library() {
     }
   }, [mounted]);
 
-  const playSong = (song) => {
+  const playSong = (song, songList) => {
     if (currentSong?.id === song.id) {
       setIsPlaying(!isPlaying);
     } else {
+      // Set the entire section as the playback queue for continuous play
+      if (songList && songList.length > 0) {
+        setPlaylist(songList);
+      }
       setCurrentSong(song);
+      // Essential for mobile: trigger playback directly in the click handler
+      if (typeof window !== 'undefined' && window._sunGeetDirectPlay) {
+        window._sunGeetDirectPlay(song.id);
+      }
     }
   };
 
@@ -64,17 +112,25 @@ export default function Library() {
       const shuffled = [...recommendations].sort(() => Math.random() - 0.5);
       setPlaylist(shuffled);
       setCurrentSong(shuffled[0]);
+      // Essential for mobile
+      if (typeof window !== 'undefined' && window._sunGeetDirectPlay) {
+        window._sunGeetDirectPlay(shuffled[0].id);
+      }
     }
   };
 
   if (!mounted) return null;
+
+  const topArtists = getTopArtists(4);
 
   return (
     <div className="px-8 pb-32 animate-fade-in bg-black min-h-screen text-white relative">
       {/* Header section with Shuffle button */}
       <div className="pt-12 mb-10 flex items-end justify-between">
          <div>
-            <h1 className="text-[44px] font-black tracking-tight leading-none mb-4">New</h1>
+            <h1 className="text-[44px] font-black tracking-tight leading-none mb-4">
+              {hasPersonalHistory ? 'For You' : 'New'}
+            </h1>
             <div className="h-[1px] bg-white/10 w-48" />
          </div>
          <button 
@@ -84,6 +140,67 @@ export default function Library() {
             <Shuffle size={18} className="text-[#fa2d48]" /> Shuffle Library
          </button>
       </div>
+
+      {/* ── Personalised "Made for You" Section ── */}
+      {hasPersonalHistory && (
+        <section className="mb-16">
+          <div className="flex items-center gap-3 mb-8">
+            <Sparkles size={22} className="text-[#fa2d48]" />
+            <h2 className="text-[28px] font-black tracking-tight">Made for You</h2>
+          </div>
+
+          {/* Show top artist chips */}
+          {topArtists.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-6">
+              {topArtists.map(artist => (
+                <span key={artist} className="px-4 py-1.5 bg-white/5 border border-white/10 rounded-full text-xs font-bold text-white/60">
+                  {artist}
+                </span>
+              ))}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-8 gap-y-4">
+            {(loadingPersonal ? Array.from({ length: 8 }) : personalRecs.slice(0, 12)).map((song, i) => (
+              song ? (
+                <div 
+                  key={song.id} 
+                  className="flex items-center gap-4 group cursor-pointer py-1.5 border-b border-white/5"
+                  onClick={() => playSong(song, personalRecs)}
+                >
+                  <div className="relative w-12 h-12 flex-shrink-0 rounded-lg overflow-hidden bg-white/5">
+                    <img src={song.thumbnail} className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <Play size={16} fill="white" />
+                    </div>
+                  </div>
+                  <div className="flex-1 min-w-0 pr-4">
+                    <h3 className={`text-sm font-bold truncate leading-tight ${currentSong?.id === song.id ? 'text-[#fa2d48]' : 'text-white'}`}>{song.title}</h3>
+                    <p className="text-xs font-semibold text-white/40 truncate mt-1">{song.author}</p>
+                  </div>
+                  <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                     <button 
+                       onClick={(e) => { e.stopPropagation(); setAddingToPlaylist(song); }}
+                       className="p-2 hover:bg-white/10 rounded-lg text-white/60 hover:text-white transition-colors"
+                       title="Add to Playlist"
+                     >
+                        <ListPlus size={18} />
+                     </button>
+                  </div>
+                </div>
+              ) : (
+                <div key={i} className="flex items-center gap-4 py-1.5">
+                   <div className="w-12 h-12 bg-white/5 rounded-lg animate-pulse" />
+                   <div className="flex-1 space-y-2">
+                     <div className="h-3 bg-white/5 rounded w-3/4 animate-pulse" />
+                     <div className="h-2 bg-white/5 rounded w-1/2 animate-pulse" />
+                   </div>
+                </div>
+              )
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Featured Banner Section */}
       <section className="mb-16 overflow-x-auto no-scrollbar -mx-8 px-8">
@@ -98,7 +215,7 @@ export default function Library() {
                  </div>
                  <div 
                    className="relative aspect-[16/9] rounded-xl overflow-hidden cursor-pointer shadow-2xl transition-transform duration-500 hover:scale-[1.01]"
-                   onClick={() => playSong(song)}
+                   onClick={() => playSong(song, recommendations)}
                  >
                    <img src={song.thumbnail} className="w-full h-full object-cover" />
                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex items-end p-6">
@@ -135,7 +252,7 @@ export default function Library() {
               <div 
                 key={song.id} 
                 className="flex items-center gap-4 group cursor-pointer py-1.5 border-b border-white/5"
-                onClick={() => playSong(song)}
+                onClick={() => playSong(song, recommendations)}
               >
                 <div className="relative w-12 h-12 flex-shrink-0 rounded-lg overflow-hidden bg-white/5">
                   <img src={song.thumbnail} className="w-full h-full object-cover" />
@@ -182,7 +299,7 @@ export default function Library() {
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6">
            {(loadingRecs ? Array.from({ length: 6 }) : recommendations.slice(15, 21)).map((song, i) => (
              song ? (
-              <div key={song.id} className="group cursor-pointer relative" onClick={() => playSong(song)}>
+              <div key={song.id} className="group cursor-pointer relative" onClick={() => playSong(song, recommendations)}>
                 <div className="relative aspect-square rounded-[1.2rem] overflow-hidden mb-3 shadow-lg transition-all duration-300 group-hover:shadow-2xl">
                    <img src={song.thumbnail} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
                    <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">

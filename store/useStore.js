@@ -2,6 +2,111 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { supabase } from '../lib/supabase';
 
+// ── Listening History Helpers ──────────────────────────────────
+const HISTORY_KEY = 'sungeet-listening-history';
+const MAX_HISTORY_ARTISTS = 40;
+const MAX_HISTORY_QUERIES = 30;
+
+function getListeningHistory() {
+  if (typeof window === 'undefined') return { artists: {}, queries: [], recentSongs: [] };
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    if (!raw) return { artists: {}, queries: [], recentSongs: [] };
+    return JSON.parse(raw);
+  } catch { return { artists: {}, queries: [], recentSongs: [] }; }
+}
+
+function saveListeningHistory(history) {
+  if (typeof window === 'undefined') return;
+  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch {}
+}
+
+function recordArtist(artistName) {
+  if (!artistName || artistName === 'Unknown Artist') return;
+  const history = getListeningHistory();
+  const clean = artistName.trim();
+  history.artists[clean] = (history.artists[clean] || 0) + 1;
+
+  // Prune to top N artists by play-count
+  const sorted = Object.entries(history.artists).sort((a, b) => b[1] - a[1]);
+  if (sorted.length > MAX_HISTORY_ARTISTS) {
+    history.artists = Object.fromEntries(sorted.slice(0, MAX_HISTORY_ARTISTS));
+  }
+  saveListeningHistory(history);
+}
+
+function recordQuery(query) {
+  if (!query || !query.trim()) return;
+  const history = getListeningHistory();
+  const clean = query.trim().toLowerCase();
+  // Remove duplicate if it exists, then prepend
+  history.queries = [clean, ...history.queries.filter(q => q !== clean)].slice(0, MAX_HISTORY_QUERIES);
+  saveListeningHistory(history);
+}
+
+function recordRecentSong(song) {
+  if (!song || !song.id) return;
+  const history = getListeningHistory();
+  if (!history.recentSongs) history.recentSongs = [];
+  // Remove duplicate, prepend
+  history.recentSongs = [
+    { id: song.id, title: song.title, author: song.author, thumbnail: song.thumbnail },
+    ...history.recentSongs.filter(s => s.id !== song.id)
+  ].slice(0, 50);
+  saveListeningHistory(history);
+}
+
+/** Get top artists sorted by play count */
+function getTopArtists(count = 5) {
+  const history = getListeningHistory();
+  return Object.entries(history.artists)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, count)
+    .map(([name]) => name);
+}
+
+/** Get recent search queries */
+function getRecentQueries(count = 5) {
+  const history = getListeningHistory();
+  return (history.queries || []).slice(0, count);
+}
+
+/** Build personalised search queries for recommendations */
+function getPersonalisedQueries() {
+  const topArtists = getTopArtists(4);
+  const recentQueries = getRecentQueries(3);
+
+  const queries = [];
+
+  // Queries from top-listened artists
+  topArtists.forEach(artist => {
+    queries.push(`${artist} songs`);
+  });
+
+  // Queries from recent searches
+  recentQueries.forEach(q => {
+    // Avoid duplicating artist queries
+    if (!queries.some(existing => existing.toLowerCase().includes(q))) {
+      queries.push(q);
+    }
+  });
+
+  // If we have nothing yet, fall back to generic
+  if (queries.length === 0) {
+    return ['new music releases 2024', 'popular hits 2024', 'latest trending songs'];
+  }
+
+  // Always add one trending query to keep things fresh
+  queries.push('trending music 2024');
+
+  // Deduplicate & cap at 5 to keep API calls reasonable
+  return [...new Set(queries)].slice(0, 5);
+}
+
+// ── Export helpers so components can use them ──────────────────
+export { getListeningHistory, recordArtist, recordQuery, recordRecentSong, getTopArtists, getRecentQueries, getPersonalisedQueries };
+
+// ── Zustand Store ─────────────────────────────────────────────
 const useStore = create(
   persist(
     (set, get) => ({
@@ -15,12 +120,20 @@ const useStore = create(
       repeat: 'none', // none, one, all
       userPlaylists: [],
       isSidebarOpen: false, // Default to false for better mobile-first behavior
+      _autoPlayLock: false, // Prevents concurrent auto-play fetches
       
       toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
       setSidebarOpen: (isOpen) => set({ isSidebarOpen: isOpen }),
       toggleLyricsMode: () => set((state) => ({ isLyricsMode: !state.isLyricsMode })),
       
-      setCurrentSong: (song) => set({ currentSong: song, isPlaying: true }),
+      setCurrentSong: (song) => {
+        // Record to listening history
+        if (song) {
+          recordArtist(song.author);
+          recordRecentSong(song);
+        }
+        set({ currentSong: song, isPlaying: true });
+      },
       setPlaylist: (list) => set({ playlist: list }),
       
       clearStore: () => set({ 
@@ -46,7 +159,12 @@ const useStore = create(
             .order('created_at', { ascending: false });
             
           if (error) throw error;
-          set({ userPlaylists: data });
+          // Sort nested playlist_songs by order_index for correct sequential playback
+          const sorted = (data || []).map(p => ({
+            ...p,
+            playlist_songs: (p.playlist_songs || []).sort((a, b) => (a.order_index || 0) - (b.order_index || 0))
+          }));
+          set({ userPlaylists: sorted });
         } catch (err) {
           console.error("Error fetching playlists:", err.message);
         }
@@ -170,7 +288,11 @@ const useStore = create(
       
       playNext: () => {
         const { currentSong, playlist, shuffle, repeat } = get();
-        if (playlist.length === 0) return;
+        if (playlist.length === 0) {
+          // No queue – trigger auto-play similar music
+          get().autoPlaySimilar();
+          return;
+        }
         
         let nextSong;
         if (shuffle) {
@@ -182,11 +304,17 @@ const useStore = create(
             nextSong = playlist[currentIndex + 1];
           } else if (repeat === 'all') {
             nextSong = playlist[0];
+          } else {
+            // Reached end of queue – auto-play similar
+            get().autoPlaySimilar();
+            return;
           }
         }
         
         if (nextSong) {
           set({ currentSong: nextSong, isPlaying: true });
+          recordArtist(nextSong.author);
+          recordRecentSong(nextSong);
         }
       },
       
@@ -210,7 +338,57 @@ const useStore = create(
         if (prevSong) {
           set({ currentSong: prevSong, isPlaying: true });
         }
-      }
+      },
+
+      /** Auto-play similar music when queue is empty */
+      autoPlaySimilar: async () => {
+        const { currentSong, _autoPlayLock } = get();
+        if (_autoPlayLock || !currentSong) return;
+
+        set({ _autoPlayLock: true });
+
+        try {
+          // Search for more songs by the same artist
+          const artist = currentSong.author || '';
+          const query = artist && artist !== 'Unknown Artist'
+            ? `${artist} songs`
+            : `${currentSong.title} similar music`;
+
+          const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+          const data = await res.json();
+
+          if (!Array.isArray(data) || data.length === 0) {
+            set({ _autoPlayLock: false });
+            return;
+          }
+
+          // Filter out the song that just ended, and pick a random one from top results
+          const candidates = data.filter(s => s.id !== currentSong.id);
+          if (candidates.length === 0) {
+            set({ _autoPlayLock: false });
+            return;
+          }
+
+          // Pick randomly from top 10 to keep things interesting
+          const pick = candidates[Math.floor(Math.random() * Math.min(candidates.length, 10))];
+
+          // Set a small queue of similar songs so the next few transitions are also smooth
+          const queue = candidates.slice(0, 15);
+
+          set({
+            playlist: queue,
+            currentSong: pick,
+            isPlaying: true,
+            _autoPlayLock: false,
+          });
+
+          recordArtist(pick.author);
+          recordRecentSong(pick);
+        } catch (err) {
+          console.error('Auto-play similar failed:', err);
+          set({ _autoPlayLock: false });
+        }
+      },
     }),
     {
       name: 'music-player-storage',

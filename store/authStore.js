@@ -46,22 +46,28 @@ const useAuthStore = create(
             .eq('user_id', userId)
             .single();
 
+          // Super Admins are always premium regardless of what's in the DB
           if (get().isSuperAdmin()) {
             set({ userPlan: 'premium' });
             return;
           }
 
           if (error && error.code === 'PGRST116') {
-            // No plan row exists — insert default free plan
+            // No plan row exists in DB — this shouldn't happen if the trigger is installed,
+            // but we'll insert a default 'free' plan as a fallback.
             await supabase
               .from('user_plans')
               .insert([{ user_id: userId, plan: 'free' }]);
             set({ userPlan: 'free' });
           } else if (data) {
-            set({ userPlan: data.plan });
+            set({ userPlan: data.plan || 'free' });
+          } else {
+             // Fallback if data is missing but no error
+             set({ userPlan: 'free' });
           }
         } catch (err) {
           console.error("Error fetching user plan:", err.message);
+          set({ userPlan: 'free' }); // Default to free on error
         }
       },
 

@@ -52,6 +52,10 @@ export default function PlaylistsPage() {
     if (songs.length > 0) {
       setPlaylist(songs);
       setCurrentSong(songs[0]);
+      // Essential for mobile
+      if (typeof window !== 'undefined' && window._sunGeetDirectPlay) {
+        window._sunGeetDirectPlay(songs[0].id);
+      }
     }
   };
 
@@ -192,6 +196,10 @@ export default function PlaylistsPage() {
                       }));
                       setPlaylist(q);
                       setCurrentSong(q[i]);
+                      // Essential for mobile
+                      if (typeof window !== 'undefined' && window._sunGeetDirectPlay) {
+                        window._sunGeetDirectPlay(q[i].id);
+                      }
                     }}
                   >
                      <span className="w-8 text-[11px] font-black text-white/20 group-hover:text-white transition-colors">{i + 1}</span>

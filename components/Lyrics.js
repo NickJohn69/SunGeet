@@ -79,7 +79,7 @@ export default function Lyrics() {
       setActive(-1);
       setCurrentTime(0);
       try {
-        const res = await fetch(`/api/lyrics?title=${encodeURIComponent(currentSong.title || '')}&artist=${encodeURIComponent(currentSong.author || '')}`);
+        const res = await fetch(`/api/lyrics?title=${encodeURIComponent(currentSong.title || '')}&artist=${encodeURIComponent(currentSong.author || '')}&duration=${currentSong.durationSeconds || 0}`);
         const data = await res.json();
         if (data.syncedLyrics) setLines(parseLRC(data.syncedLyrics));
         else setPlain(data.lyrics || 'No lyrics available.');

@@ -89,6 +89,7 @@ export default function Player() {
           rel: 0,
           showinfo: 0,
           origin: window.location.origin,
+          enablejsapi: 1,
         },
         events: {
           onReady: () => {
@@ -108,6 +109,16 @@ export default function Player() {
                 } else {
                   store.playNext();
                 }
+              }
+            }
+            if (event.data === YT.PlayerState.PAUSED) {
+              // If it pauses but we should be playing (e.g. background/lock)
+              if (isPlayingRef.current) {
+                setTimeout(() => {
+                  if (isPlayingRef.current && ytPlayerRef.current?.getPlayerState() === YT.PlayerState.PAUSED) {
+                    ytPlayerRef.current?.playVideo();
+                  }
+                }, 100);
               }
             }
             if (event.data === YT.PlayerState.PLAYING) {
@@ -141,24 +152,47 @@ export default function Player() {
       setProgress(0);
       setDuration(0);
 
+      // Mobile Optimization: Ensure loadVideoById is called
       ytPlayerRef.current.loadVideoById({
         videoId: currentSong.id,
         startSeconds: 0,
       });
+      
+      // Force play on song change
+      if (isPlaying) {
+        ytPlayerRef.current.playVideo();
+      }
     }
-  }, [currentSong?.id, playerReady]);
+  }, [currentSong?.id, playerReady, isPlaying]);
 
   useEffect(() => {
     if (!playerReady || !ytPlayerRef.current) return;
 
     try {
+      const state = ytPlayerRef.current.getPlayerState?.();
       if (isPlaying) {
-        ytPlayerRef.current.playVideo();
+        if (state !== 1) ytPlayerRef.current.playVideo(); // 1 is PLAYING
       } else {
-        ytPlayerRef.current.pauseVideo();
+        if (state === 1) ytPlayerRef.current.pauseVideo();
       }
     } catch (e) {}
   }, [isPlaying, playerReady]);
+
+  // Expose play function to window for immediate mobile response
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window._sunGeetDirectPlay = (songId) => {
+        if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
+          ytPlayerRef.current.loadVideoById({
+            videoId: songId,
+            startSeconds: 0,
+          });
+          ytPlayerRef.current.playVideo();
+          setIsPlaying(true);
+        }
+      };
+    }
+  }, [playerReady, setIsPlaying]);
 
   useEffect(() => {
     if (!playerReady || !ytPlayerRef.current) return;
@@ -196,7 +230,7 @@ export default function Player() {
             }));
           }
         } catch (e) {}
-      }, 1000); // Reduced frequency for background efficiency
+      }, 250); // Increased frequency for better lyrics sync
     }
 
     return () => {
@@ -217,14 +251,27 @@ export default function Player() {
       album: 'SunGeet',
       artwork: [
         { src: currentSong.thumbnail, sizes: '512x512', type: 'image/jpeg' },
+        { src: currentSong.thumbnail, sizes: '384x384', type: 'image/jpeg' },
+        { src: currentSong.thumbnail, sizes: '256x256', type: 'image/jpeg' },
         { src: currentSong.thumbnail, sizes: '192x192', type: 'image/jpeg' },
+        { src: currentSong.thumbnail, sizes: '128x128', type: 'image/jpeg' },
+        { src: currentSong.thumbnail, sizes: '96x96', type: 'image/jpeg' },
       ]
     });
 
+    // Sync Playback State
+    navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+
     // Action Handlers
     const handlers = [
-      ['play', () => setIsPlaying(true)],
-      ['pause', () => setIsPlaying(false)],
+      ['play', () => { 
+        setIsPlaying(true); 
+        ytPlayerRef.current?.playVideo();
+      }],
+      ['pause', () => { 
+        setIsPlaying(false); 
+        ytPlayerRef.current?.pauseVideo();
+      }],
       ['previoustrack', () => playPrev()],
       ['nexttrack', () => playNext()],
       ['seekbackward', (details) => {
@@ -238,6 +285,10 @@ export default function Player() {
         const newTime = Math.min(progress + skipTime, duration);
         ytPlayerRef.current?.seekTo(newTime, true);
         setProgress(newTime);
+      }],
+      ['seekto', (details) => {
+        ytPlayerRef.current?.seekTo(details.seekTime, true);
+        setProgress(details.seekTime);
       }],
     ];
 
@@ -254,7 +305,7 @@ export default function Player() {
         try { navigator.mediaSession.setActionHandler(action, null); } catch (e) {}
       }
     };
-  }, [currentSong, playNext, playPrev, setIsPlaying, progress, duration, playerReady]);
+  }, [currentSong, playNext, playPrev, setIsPlaying, progress, duration, playerReady, isPlaying]);
 
   useEffect(() => {
     const lyricsSeekHandler = (e) => {
@@ -267,12 +318,22 @@ export default function Player() {
 
     const togglePlayHandler = () => setIsPlaying(!isPlaying);
 
+    const visibilityHandler = () => {
+      if (document.visibilityState === 'visible' && isPlaying && ytPlayerRef.current) {
+        // Resume if it was supposed to be playing
+        const state = ytPlayerRef.current.getPlayerState();
+        if (state !== 1) ytPlayerRef.current.playVideo();
+      }
+    };
+
     window.addEventListener('lyricsSeek', lyricsSeekHandler);
     window.addEventListener('togglePlay', togglePlayHandler);
+    document.addEventListener('visibilitychange', visibilityHandler);
 
     return () => {
       window.removeEventListener('lyricsSeek', lyricsSeekHandler);
       window.removeEventListener('togglePlay', togglePlayHandler);
+      document.removeEventListener('visibilitychange', visibilityHandler);
     };
   }, [isPlaying, setIsPlaying, playerReady]);
 

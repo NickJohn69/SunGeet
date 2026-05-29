@@ -3,13 +3,14 @@
 import { useState } from 'react';
 import { Search as SearchIcon, Play, Pause, Loader2, Plus, Check } from 'lucide-react';
 import useStore from '../store/useStore';
+import { recordQuery } from '../store/useStore';
 
 export default function Search() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
-  const { setCurrentSong, currentSong, isPlaying, setIsPlaying, addToPlaylist, playlist } = useStore();
+  const { setCurrentSong, currentSong, isPlaying, setIsPlaying, addToPlaylist, playlist, setPlaylist } = useStore();
 
   const handleSearch = async (e) => {
     e.preventDefault();
@@ -17,6 +18,10 @@ export default function Search() {
 
     setLoading(true);
     setHasSearched(true);
+
+    // Track this search query for personalized recommendations
+    recordQuery(query);
+
     try {
       const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
       const data = await res.json();
@@ -28,11 +33,19 @@ export default function Search() {
     }
   };
 
-  const playSong = (song) => {
+  const playSong = (song, allResults) => {
     if (currentSong?.id === song.id) {
       setIsPlaying(!isPlaying);
     } else {
+      // Set the full search results as the playback queue so songs play continuously
+      if (allResults && allResults.length > 0) {
+        setPlaylist(allResults);
+      }
       setCurrentSong(song);
+      // Essential for mobile: trigger playback directly in the click handler
+      if (typeof window !== 'undefined' && window._sunGeetDirectPlay) {
+        window._sunGeetDirectPlay(song.id);
+      }
     }
   };
 
@@ -79,7 +92,7 @@ export default function Search() {
                 <div 
                   key={song.id} 
                   className="flex items-center gap-4 group cursor-pointer py-1.5 border-b border-white/5"
-                  onClick={() => playSong(song)}
+                  onClick={() => playSong(song, results)}
                 >
                   <div className="relative w-12 h-12 flex-shrink-0 rounded-lg overflow-hidden bg-white/5">
                     <img src={song.thumbnail} className="w-full h-full object-cover" />
@@ -131,4 +144,3 @@ export default function Search() {
     </div>
   );
 }
-

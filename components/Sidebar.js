@@ -43,6 +43,7 @@ export default function Sidebar() {
 
   const navItems = [
     { name: 'Home', icon: Home, href: '/' },
+    { name: 'Artists', icon: User, href: '/artists' },
     { name: 'New', icon: Music, href: '/new' },
     { name: 'Radio', icon: Radio, href: '/radio' },
     { name: 'Playlists', icon: ListMusic, href: '/playlists' },

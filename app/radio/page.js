@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 
 export default function RadioPage() {
   const [recommendations, setRecommendations] = useState([]);
-  const { setCurrentSong } = useStore();
+  const { setCurrentSong, setPlaylist } = useStore();
 
   useEffect(() => {
     fetch('/api/search?q=radio%20mix%20hits')
@@ -26,7 +26,14 @@ export default function RadioPage() {
           <div 
             key={song.id} 
             className="relative aspect-video rounded-3xl overflow-hidden group cursor-pointer shadow-2xl"
-            onClick={() => setCurrentSong(song)}
+            onClick={() => {
+              setPlaylist(recommendations);
+              setCurrentSong(song);
+              // Essential for mobile
+              if (typeof window !== 'undefined' && window._sunGeetDirectPlay) {
+                window._sunGeetDirectPlay(song.id);
+              }
+            }}
           >
             <img src={song.thumbnail} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex flex-col justify-end p-6">

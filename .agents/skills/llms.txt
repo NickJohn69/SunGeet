@@ -1,0 +1,6 @@
+framer-motion-core: Core API — motion components, useMotionValue, useTransform, useSpring, animate props
+framer-motion-react: React integration — AnimatePresence, layout animations, useAnimation, SSR/Next.js
+framer-motion-variants: Animation variants — state machines, orchestrated animations, stagger, repeat, sequencing
+framer-motion-scroll: Scroll animations — useScroll, useTransform, scroll-linked animations, parallax, useInView
+framer-motion-gestures: Gesture animations — drag, pan, tap, hover, focus, touch interactions
+framer-motion-layout: Layout animations — shared layout transitions, layoutId, exit animations, AnimatePresence modes
