@@ -57,12 +57,28 @@ function SearchContent() {
               >
                 <div className="relative aspect-square rounded-2xl overflow-hidden mb-6 shadow-xl">
                   <img src={song.thumbnail} alt={song.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
+                  {/* Desktop hover play button */}
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity items-center justify-center gap-4 hidden lg:flex">
                      <button 
                        onClick={() => playSong(song)}
                        className="w-14 h-14 bg-[#fa2d48] rounded-full flex items-center justify-center text-white shadow-2xl hover:scale-110 active:scale-90 transition-all"
                      >
                         {isCurrent && isPlaying ? <Loader2 className="animate-spin" size={24} /> : <Play size={24} fill="white" className="ml-1" />}
+                     </button>
+                  </div>
+                  {/* Mobile always-visible play + save buttons */}
+                  <div className="absolute inset-x-0 bottom-0 p-3 flex items-center justify-between gap-2 lg:hidden bg-gradient-to-t from-black/80 to-transparent">
+                     <button 
+                       onClick={() => playSong(song)}
+                       className="w-10 h-10 bg-[#fa2d48] rounded-full flex items-center justify-center text-white shadow-lg active:scale-90 transition-all flex-shrink-0"
+                     >
+                        {isCurrent && isPlaying ? <Loader2 className="animate-spin" size={18} /> : <Play size={18} fill="white" className="ml-0.5" />}
+                     </button>
+                     <button 
+                       onClick={() => setLocalAddingToPlaylist(song)}
+                       className="flex-1 py-2.5 bg-white/10 backdrop-blur-md rounded-xl flex items-center justify-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-white/80 active:bg-white/20 transition-all border border-white/10"
+                     >
+                        <ListPlus size={14} /> Save
                      </button>
                   </div>
                 </div>
@@ -74,7 +90,7 @@ function SearchContent() {
 
                 <button 
                   onClick={() => setLocalAddingToPlaylist(song)}
-                  className="w-full py-3 bg-white/5 hover:bg-white/10 rounded-xl flex items-center justify-center gap-2 text-xs font-black uppercase tracking-widest transition-colors border border-white/5 group-hover:border-[#fa2d48]/20 group-hover:text-white"
+                  className="w-full py-3 bg-white/5 hover:bg-white/10 rounded-xl flex items-center justify-center gap-2 text-xs font-black uppercase tracking-widest transition-colors border border-white/5 group-hover:border-[#fa2d48]/20 group-hover:text-white hidden lg:flex"
                 >
                    <ListPlus size={16} className="text-[#fa2d48]" /> Save to Playlist
                 </button>

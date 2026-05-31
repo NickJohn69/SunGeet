@@ -90,6 +90,7 @@ export default function Player() {
           showinfo: 0,
           origin: window.location.origin,
           enablejsapi: 1,
+          playsinline: 1,
         },
         events: {
           onReady: () => {
@@ -114,11 +115,18 @@ export default function Player() {
             if (event.data === YT.PlayerState.PAUSED) {
               // If it pauses but we should be playing (e.g. background/lock)
               if (isPlayingRef.current) {
-                setTimeout(() => {
-                  if (isPlayingRef.current && ytPlayerRef.current?.getPlayerState() === YT.PlayerState.PAUSED) {
+                let attempts = 0;
+                const retryPlay = () => {
+                  if (!isPlayingRef.current) return;
+                  if (ytPlayerRef.current?.getPlayerState?.() === YT.PlayerState.PAUSED) {
                     ytPlayerRef.current?.playVideo();
+                    attempts++;
+                    if (attempts < 10) {
+                      setTimeout(retryPlay, 200);
+                    }
                   }
-                }, 100);
+                };
+                setTimeout(retryPlay, 100);
               }
             }
             if (event.data === YT.PlayerState.PLAYING) {
@@ -307,6 +315,47 @@ export default function Player() {
     };
   }, [currentSong, playNext, playPrev, setIsPlaying, progress, duration, playerReady, isPlaying]);
 
+  // ── Background playback keepalive ──────────────────────────────
+  // Periodically checks and forces resume when player pauses unexpectedly
+  // (common on mobile when device locks or browser goes to background)
+  const keepaliveRef = useRef(null);
+
+  useEffect(() => {
+    if (!playerReady || !isPlaying) {
+      if (keepaliveRef.current) {
+        clearInterval(keepaliveRef.current);
+        keepaliveRef.current = null;
+      }
+      return;
+    }
+
+    keepaliveRef.current = setInterval(() => {
+      try {
+        if (ytPlayerRef.current && typeof ytPlayerRef.current.getPlayerState === 'function') {
+          const state = ytPlayerRef.current.getPlayerState();
+          // 2 = paused, 3 = buffering, 5 = video cued
+          if (state === 2 || state === 5) {
+            ytPlayerRef.current.playVideo();
+          }
+          // -1 = unstarted (need to reload)
+          if (state === -1) {
+            const song = useStore.getState().currentSong;
+            if (song) {
+              ytPlayerRef.current.loadVideoById({ videoId: song.id, startSeconds: 0 });
+            }
+          }
+        }
+      } catch (e) {}
+    }, 2000);
+
+    return () => {
+      if (keepaliveRef.current) {
+        clearInterval(keepaliveRef.current);
+        keepaliveRef.current = null;
+      }
+    };
+  }, [isPlaying, playerReady]);
+
   useEffect(() => {
     const lyricsSeekHandler = (e) => {
       if (playerReady && ytPlayerRef.current && !isNaN(e.detail.time)) {
@@ -326,14 +375,21 @@ export default function Player() {
       }
     };
 
+    // For mobile: handle pagehide (iOS Safari) and beforeunload
+    const pageHideHandler = () => {
+      // Keep playing - no action needed, but prevents pause
+    };
+
     window.addEventListener('lyricsSeek', lyricsSeekHandler);
     window.addEventListener('togglePlay', togglePlayHandler);
     document.addEventListener('visibilitychange', visibilityHandler);
+    window.addEventListener('pagehide', pageHideHandler);
 
     return () => {
       window.removeEventListener('lyricsSeek', lyricsSeekHandler);
       window.removeEventListener('togglePlay', togglePlayHandler);
       document.removeEventListener('visibilitychange', visibilityHandler);
+      window.removeEventListener('pagehide', pageHideHandler);
     };
   }, [isPlaying, setIsPlaying, playerReady]);
 
