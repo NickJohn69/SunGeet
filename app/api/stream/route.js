@@ -24,30 +24,20 @@ export async function GET(request) {
     const youtube = await getYT();
     const info = await youtube.getBasicInfo(id);
     
-    const format = info.chooseFormat({ type: 'audio', quality: 'best' });
+    // Prefer audio-only formats, sorted by bitrate (best first)
+    const formats = info.chooseFormat({ type: 'audio', quality: 'best' });
     
+    let format = formats;
+    
+    // If chooseFormat returned a single format, use it
+    // Otherwise find the best one
     if (!format || !format.decipher_url) {
       throw new Error('No audio format found');
     }
 
-    // Proxy the audio stream to avoid CORS issues with <audio> element
-    const streamRes = await fetch(format.decipher_url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      },
-    });
-
-    if (!streamRes.ok) throw new Error(`Stream responded with ${streamRes.status}`);
-
-    const contentType = streamRes.headers.get('Content-Type') || 'audio/webm';
-
-    return new Response(streamRes.body, {
-      headers: {
-        'Content-Type': contentType,
-        'Accept-Ranges': 'bytes',
-        'Cache-Control': 'no-cache',
-      },
-    });
+    // Redirect to the actual audio stream URL
+    // The <audio> element will follow the redirect and play the stream
+    return Response.redirect(format.decipher_url, 307);
   } catch (error) {
     console.error("Stream error:", error.message);
     return NextResponse.json({ 

@@ -20,11 +20,12 @@ export default function Player() {
   const [mounted, setMounted] = useState(false);
   const [prevVolume, setPrevVolume] = useState(1);
   const [playerReady, setPlayerReady] = useState(false);
-  const [streamError, setStreamError] = useState(false);
   const progressInterval = useRef(null);
   const currentSongIdRef = useRef(null);
   const isPlayingRef = useRef(false);
   const keepaliveRef = useRef(null);
+  const loadingRef = useRef(false);
+  const errorCountRef = useRef(0);
 
   useEffect(() => { setMounted(true); }, []);
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
@@ -46,37 +47,40 @@ export default function Player() {
     currentSongIdRef.current = currentSong.id;
     setProgress(0);
     setDuration(0);
-    setStreamError(false);
+    setPlayerReady(false);
+    errorCountRef.current = 0;
 
     const audio = audioRef.current;
     if (!audio) return;
 
-    // Stop any current playback
-    audio.pause();
-    audio.src = '';
-    audio.load();
+    loadingRef.current = true;
 
-    // Set new source
+    // Properly reset without triggering error events
+    audio.pause();
+    audio.removeAttribute('src');
+
+    // Set new source and load
     audio.src = `/api/stream?id=${currentSong.id}`;
     audio.load();
 
     if (isPlaying) {
       const tryPlay = () => {
-        audio.play().catch((err) => {
-          setStreamError(true);
-        });
+        if (loadingRef.current) {
+          audio.play().catch(() => {});
+        }
       };
       audio.addEventListener('canplay', tryPlay, { once: true });
-      // Also try immediately (in case already loaded)
-      setTimeout(tryPlay, 100);
+      audio.addEventListener('loadedmetadata', tryPlay, { once: true });
     }
   }, [currentSong?.id, mounted]);
 
   // React to isPlaying changes
   useEffect(() => {
-    if (!playerReady || !audioRef.current) return;
+    if (!audioRef.current) return;
     if (isPlaying) {
-      playAudio();
+      if (playerReady) {
+        playAudio();
+      }
     } else {
       pauseAudio();
     }
@@ -88,7 +92,7 @@ export default function Player() {
     audioRef.current.volume = volume;
   }, [volume]);
 
-  // Progress tracking via timeupdate
+  // Progress tracking
   useEffect(() => {
     if (!playerReady || !isPlaying || !audioRef.current) return;
 
@@ -99,7 +103,6 @@ export default function Player() {
       setProgress(currentTime);
       if (dur > 0) setDuration(dur);
 
-      // Sync Media Session Position State
       if ('mediaSession' in navigator && dur > 0) {
         try {
           navigator.mediaSession.setPositionState({
@@ -119,21 +122,25 @@ export default function Player() {
     return () => clearInterval(interval);
   }, [isPlaying, playerReady]);
 
-  // Expose direct play function to window for other components
+  // Expose direct play function to window
   useEffect(() => {
     if (typeof window !== 'undefined') {
       window._sunGeetDirectPlay = (songId) => {
-        if (audioRef.current) {
-          audioRef.current.src = `/api/stream?id=${songId}`;
-          audioRef.current.load();
-          audioRef.current.play().catch(() => {});
-          setIsPlaying(true);
-        }
+        const audio = audioRef.current;
+        if (!audio) return;
+        loadingRef.current = true;
+        errorCountRef.current = 0;
+        audio.pause();
+        audio.removeAttribute('src');
+        audio.src = `/api/stream?id=${songId}`;
+        audio.load();
+        audio.play().catch(() => {});
+        setIsPlaying(true);
       };
     }
   }, [setIsPlaying]);
 
-  // ── Background playback keepalive ──────────────────────────────
+  // Background playback keepalive
   useEffect(() => {
     if (!playerReady || !isPlaying) {
       if (keepaliveRef.current) {
@@ -293,6 +300,7 @@ export default function Player() {
         playsInline
         onLoadedMetadata={() => {
           setPlayerReady(true);
+          loadingRef.current = false;
           if (audioRef.current) {
             audioRef.current.volume = volume;
             setDuration(audioRef.current.duration || 0);
@@ -315,13 +323,18 @@ export default function Player() {
           }
         }}
         onError={() => {
-          setStreamError(true);
-          setTimeout(() => {
+          // Don't skip on transient errors; only skip after multiple failures
+          loadingRef.current = false;
+          errorCountRef.current++;
+          if (errorCountRef.current > 2 && currentSongIdRef.current) {
             const store = useStore.getState();
-            store.playNext();
-          }, 1500);
+            setTimeout(() => store.playNext(), 2000);
+          }
         }}
-        onPlay={() => setPlayerReady(true)}
+        onPlay={() => {
+          setPlayerReady(true);
+          loadingRef.current = false;
+        }}
       />
 
       <div className={`fixed bottom-0 right-0 z-50 bg-[#1c1c1e]/90 backdrop-blur-2xl border-t border-white/5 px-6 py-3 select-none pointer-events-auto shadow-[0_-10px_40px_rgba(0,0,0,0.5)] transition-all duration-500 
