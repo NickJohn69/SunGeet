@@ -323,13 +323,16 @@ export default function Player() {
           }
         }}
         onError={() => {
-          // Don't skip on transient errors; only skip after multiple failures
           loadingRef.current = false;
           errorCountRef.current++;
-          if (errorCountRef.current > 2 && currentSongIdRef.current) {
-            const store = useStore.getState();
-            setTimeout(() => store.playNext(), 2000);
-          }
+          setTimeout(() => {
+            if (currentSongIdRef.current) {
+              const store = useStore.getState();
+              if (store.currentSong?.id === currentSongIdRef.current) {
+                store.playNext();
+              }
+            }
+          }, 2000);
         }}
         onPlay={() => {
           setPlayerReady(true);
