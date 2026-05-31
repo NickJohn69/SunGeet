@@ -25,7 +25,6 @@ export default function Player() {
   const isPlayingRef = useRef(false);
   const keepaliveRef = useRef(null);
   const loadingRef = useRef(false);
-  const errorCountRef = useRef(0);
 
   useEffect(() => { setMounted(true); }, []);
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
@@ -48,25 +47,21 @@ export default function Player() {
     setProgress(0);
     setDuration(0);
     setPlayerReady(false);
-    errorCountRef.current = 0;
 
     const audio = audioRef.current;
     if (!audio) return;
 
     loadingRef.current = true;
 
-    // Properly reset without triggering error events
     audio.pause();
     audio.removeAttribute('src');
-
-    // Set new source and load
     audio.src = `/api/stream?id=${currentSong.id}`;
     audio.load();
 
     if (isPlaying) {
       const tryPlay = () => {
-        if (loadingRef.current) {
-          audio.play().catch(() => {});
+        if (loadingRef.current && audioRef.current) {
+          audioRef.current.play().catch(() => {});
         }
       };
       audio.addEventListener('canplay', tryPlay, { once: true });
@@ -86,7 +81,7 @@ export default function Player() {
     }
   }, [isPlaying, playerReady, playAudio, pauseAudio]);
 
-  // Volume changes
+  // Volume
   useEffect(() => {
     if (!audioRef.current) return;
     audioRef.current.volume = volume;
@@ -122,14 +117,13 @@ export default function Player() {
     return () => clearInterval(interval);
   }, [isPlaying, playerReady]);
 
-  // Expose direct play function to window
+  // Expose direct play
   useEffect(() => {
     if (typeof window !== 'undefined') {
       window._sunGeetDirectPlay = (songId) => {
         const audio = audioRef.current;
         if (!audio) return;
         loadingRef.current = true;
-        errorCountRef.current = 0;
         audio.pause();
         audio.removeAttribute('src');
         audio.src = `/api/stream?id=${songId}`;
@@ -168,7 +162,7 @@ export default function Player() {
     };
   }, [isPlaying, playerReady]);
 
-  // Media Session API for Lock Screen Controls
+  // Media Session API
   useEffect(() => {
     if (!('mediaSession' in navigator) || !currentSong) return;
 
@@ -324,7 +318,6 @@ export default function Player() {
         }}
         onError={() => {
           loadingRef.current = false;
-          errorCountRef.current++;
           setTimeout(() => {
             if (currentSongIdRef.current) {
               const store = useStore.getState();
@@ -332,12 +325,9 @@ export default function Player() {
                 store.playNext();
               }
             }
-          }, 2000);
+          }, 3000);
         }}
-        onPlay={() => {
-          setPlayerReady(true);
-          loadingRef.current = false;
-        }}
+        onPlay={() => { setPlayerReady(true); loadingRef.current = false; }}
       />
 
       <div className={`fixed bottom-0 right-0 z-50 bg-[#1c1c1e]/90 backdrop-blur-2xl border-t border-white/5 px-6 py-3 select-none pointer-events-auto shadow-[0_-10px_40px_rgba(0,0,0,0.5)] transition-all duration-500 
