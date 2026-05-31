@@ -30,8 +30,24 @@ export async function GET(request) {
       throw new Error('No audio format found');
     }
 
-    return Response.redirect(format.decipher_url, 307);
+    // Proxy the audio stream to avoid CORS issues with <audio> element
+    const streamRes = await fetch(format.decipher_url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      },
+    });
 
+    if (!streamRes.ok) throw new Error(`Stream responded with ${streamRes.status}`);
+
+    const contentType = streamRes.headers.get('Content-Type') || 'audio/webm';
+
+    return new Response(streamRes.body, {
+      headers: {
+        'Content-Type': contentType,
+        'Accept-Ranges': 'bytes',
+        'Cache-Control': 'no-cache',
+      },
+    });
   } catch (error) {
     console.error("Stream error:", error.message);
     return NextResponse.json({ 

@@ -79,7 +79,7 @@ export default function Sidebar() {
       )}
 
       {/* Logo Section */}
-      <div className={`flex items-center gap-3 px-3 mb-12 group cursor-pointer pt-2 overflow-hidden ${!isSidebarOpen && 'lg:justify-center lg:px-0'}`}>
+      <div onClick={() => router.push('/')} className={`flex items-center gap-3 px-3 mb-12 group cursor-pointer pt-2 overflow-hidden ${!isSidebarOpen && 'lg:justify-center lg:px-0'}`}>
         <div className="w-10 h-10 bg-gradient-to-tr from-[#fa2d48] to-[#ff453a] rounded-[12px] flex-shrink-0 flex items-center justify-center shadow-lg shadow-[#fa2d48]/20 group-hover:scale-110 transition-all duration-500">
            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-white">
               <path d="M12 4V14C12 15.6569 10.6569 17 9 17C7.34315 17 6 15.6569 6 14C6 12.3431 7.34315 11 9 11C9.64807 11 10.2471 11.2057 10.7371 11.556" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
