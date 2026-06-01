@@ -10,15 +10,30 @@ const parseLRC = (str) => {
   if (!str) return [];
   const lines = str.split('\n');
   const parsed = [];
-  const regex = /\[(\d{2}):(\d{2}(?:\.\d{2,3})?)\]/;
+  let offset = 0;
+  const regex = /\[(\d{1,2}):(\d{2}(?:[.:]\d{1,3})?)\]/g;
+
   lines.forEach(line => {
-    const m = line.match(regex);
-    if (m) {
-      const time = parseInt(m[1]) * 60 + parseFloat(m[2]);
+    const offsetMatch = line.match(/\[offset:\s*(-?\d+)\]/i);
+    if (offsetMatch) {
+      offset = parseFloat(offsetMatch[1]) / 1000;
+      return;
+    }
+    const timestamps = [];
+    let m;
+    while ((m = regex.exec(line)) !== null) {
+      const mins = parseInt(m[1]);
+      const secPart = m[2].replace(':', '.');
+      const secs = parseFloat(secPart);
+      if (!isNaN(secs)) timestamps.push(mins * 60 + secs);
+    }
+    if (timestamps.length > 0) {
       const text = line.replace(regex, '').trim();
-      parsed.push({ time, text });
+      timestamps.forEach(t => parsed.push({ time: t + offset, text }));
     }
   });
+
+  parsed.sort((a, b) => a.time - b.time);
   return parsed;
 };
 

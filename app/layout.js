@@ -5,6 +5,7 @@ import Navigation from '../components/Navigation';
 import Player from '../components/Player';
 import Sidebar from '../components/Sidebar';
 import Lyrics from '../components/Lyrics';
+import ActivityTracker from '../components/ActivityTracker';
 import useAuthStore from '../store/authStore';
 import "./globals.css";
 
@@ -55,6 +56,7 @@ export default function RootLayout({ children }) {
         </div>
         <Player />
         <Lyrics />
+        <ActivityTracker />
       </body>
     </html>
   );

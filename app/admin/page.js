@@ -1,10 +1,18 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { ShieldCheck, Users, Music, ListMusic, TrendingUp, Activity, Database, Globe, Crown, UserCheck, Loader2, RefreshCw } from 'lucide-react';
+import { useEffect, useState, useRef } from 'react';
+import { ShieldCheck, Users, Music, ListMusic, Crown, UserCheck, Loader2, RefreshCw, Clock, Edit3, Check, X, Database, Globe } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
 import { supabase } from '../../lib/supabase';
 import { useRouter } from 'next/navigation';
+
+const formatSeconds = (total) => {
+  if (!total || total <= 0) return '0m';
+  const hours = Math.floor(total / 3600);
+  const mins = Math.floor((total % 3600) / 60);
+  if (hours > 0) return `${hours}h ${mins}m`;
+  return `${mins}m`;
+};
 
 export default function AdminDashboard() {
   const { isSuperAdmin, user } = useAuthStore();
@@ -16,18 +24,15 @@ export default function AdminDashboard() {
   const [promotionalEmail, setPromotionalEmail] = useState('');
   const [promoLoading, setPromoLoading] = useState(false);
   const [promoMessage, setPromoMessage] = useState(null);
+  const [editingUser, setEditingUser] = useState(null);
+  const [editPlan, setEditPlan] = useState('');
+  const [editLoading, setEditLoading] = useState(false);
+
+  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    if (mounted && !isSuperAdmin()) {
-      router.push('/');
-    }
-    if (mounted && isSuperAdmin()) {
-      fetchAdminStats();
-    }
+    if (mounted && !isSuperAdmin()) router.push('/');
+    if (mounted && isSuperAdmin()) fetchAdminStats();
   }, [mounted]);
 
   const fetchAdminStats = async () => {
@@ -45,29 +50,41 @@ export default function AdminDashboard() {
     }
   };
 
+  const changeUserPlan = async (userId, newPlan) => {
+    setEditLoading(true);
+    try {
+      const { error } = await supabase.rpc('admin_update_user_plan', {
+        target_user_id: userId,
+        new_plan: newPlan
+      });
+      if (error) throw error;
+      setEditingUser(null);
+      fetchAdminStats();
+    } catch (err) {
+      console.error('Plan change error:', err);
+      alert('Failed to change plan: ' + err.message);
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
   const promoteUserByEmail = async (email) => {
     if (!email) return;
     setPromoLoading(true);
     setPromoMessage(null);
     try {
-      // 1. Find user by email in our stats data or via Supabase (if possible)
-      // Since we can't easily query auth.users from client without admin key,
-      // we'll use the record from our user_plan_details stats which has the ID.
       const userToPromote = stats.user_plan_details.find(u => u.email.toLowerCase() === email.toLowerCase());
-
       if (!userToPromote) {
         throw new Error("User not found in recent records. Try refreshing first.");
       }
-
-      const { error: upgradeError } = await supabase
-        .from('user_plans')
-        .upsert({ user_id: userToPromote.user_id, plan: 'premium', updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
-
+      const { error: upgradeError } = await supabase.rpc('admin_update_user_plan', {
+        target_user_id: userToPromote.user_id,
+        new_plan: 'premium'
+      });
       if (upgradeError) throw upgradeError;
-
       setPromoMessage({ text: `Success! ${email} is now Premium.`, type: 'success' });
       setPromotionalEmail('');
-      fetchAdminStats(); // Refresh the list
+      fetchAdminStats();
     } catch (err) {
       console.error('Promotion error:', err);
       setPromoMessage({ text: err.message, type: 'error' });
@@ -187,21 +204,23 @@ export default function AdminDashboard() {
                   </h2>
 
                   {/* Table Header */}
-                  <div className="flex items-center gap-4 px-4 py-2 border-b border-white/5 text-[9px] font-black uppercase tracking-[0.2em] text-white/20 mb-2">
-                    <span className="w-8">#</span>
-                    <span className="flex-1">User</span>
-                    <span className="w-24 text-center">Plan</span>
-                    <span className="w-28">Joined</span>
-                    <span className="w-24">Last Seen</span>
+                  <div className="grid grid-cols-[32px_1fr_80px_90px_80px_80px_100px] gap-2 px-4 py-2 border-b border-white/5 text-[9px] font-black uppercase tracking-[0.2em] text-white/20 mb-2 items-center">
+                    <span>#</span>
+                    <span>User</span>
+                    <span className="text-center">Plan</span>
+                    <span className="text-center">Time Spent</span>
+                    <span>Joined</span>
+                    <span>Last Seen</span>
+                    <span className="text-center">Action</span>
                   </div>
 
                   {/* User Rows */}
-                  <div className="space-y-1 max-h-[400px] overflow-y-auto no-scrollbar">
+                  <div className="space-y-1 max-h-[600px] overflow-y-auto no-scrollbar">
                     {stats.user_plan_details?.map((u, i) => (
-                      <div key={u.user_id} className="flex items-center gap-4 p-4 rounded-2xl hover:bg-white/5 transition-all group">
-                        <span className="w-8 text-[11px] font-black text-white/20">{i + 1}</span>
-                        <div className="flex-1 min-w-0 flex items-center gap-3">
-                          <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white font-black text-xs flex-shrink-0 ${u.plan === 'premium'
+                      <div key={u.user_id} className="grid grid-cols-[32px_1fr_80px_90px_80px_80px_100px] gap-2 p-4 rounded-2xl hover:bg-white/5 transition-all group items-center">
+                        <span className="text-[11px] font-black text-white/20">{i + 1}</span>
+                        <div className="min-w-0 flex items-center gap-3">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-black text-[10px] flex-shrink-0 ${u.plan === 'premium'
                               ? 'bg-gradient-to-br from-[#fa2d48] to-[#af52de]'
                               : 'bg-white/10'
                             }`}>
@@ -214,8 +233,19 @@ export default function AdminDashboard() {
                             <p className="text-[10px] text-white/30 truncate">{u.email}</p>
                           </div>
                         </div>
-                        <div className="w-24 flex justify-center">
-                          {u.plan === 'premium' ? (
+                        <div className="flex justify-center">
+                          {editingUser === u.user_id ? (
+                            <div className="flex items-center gap-1">
+                              <select
+                                value={editPlan}
+                                onChange={(e) => setEditPlan(e.target.value)}
+                                className="bg-black/60 border border-white/20 rounded-lg text-[9px] font-black uppercase px-2 py-1 outline-none focus:border-[#fa2d48]"
+                              >
+                                <option value="free">Free</option>
+                                <option value="premium">Premium</option>
+                              </select>
+                            </div>
+                          ) : u.plan === 'premium' ? (
                             <span className="inline-flex items-center gap-1 bg-gradient-to-r from-[#fa2d48]/20 to-[#af52de]/20 text-[#fa2d48] px-2.5 py-1 rounded-full">
                               <Crown size={10} />
                               <span className="text-[8px] font-black uppercase tracking-wider">Premium</span>
@@ -224,8 +254,43 @@ export default function AdminDashboard() {
                             <span className="text-[9px] font-black uppercase tracking-wider text-white/25 bg-white/5 px-2.5 py-1 rounded-full">Free</span>
                           )}
                         </div>
-                        <span className="w-28 text-[11px] text-white/30 font-medium">{formatDate(u.created_at)}</span>
-                        <span className="w-24 text-[11px] text-white/20 font-medium">{formatTime(u.last_sign_in_at)}</span>
+                        <div className="flex justify-center">
+                          <span className="text-[11px] text-white/30 font-medium flex items-center gap-1">
+                            <Clock size={10} className="opacity-50" />
+                            {formatSeconds(u.seconds_active)}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-white/30 font-medium">{formatDate(u.created_at)}</span>
+                        <span className="text-[11px] text-white/20 font-medium">{formatTime(u.last_sign_in_at)}</span>
+                        <div className="flex justify-center">
+                          {editingUser === u.user_id ? (
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => changeUserPlan(u.user_id, editPlan)}
+                                disabled={editLoading}
+                                className="w-7 h-7 rounded-full bg-green-500/20 text-green-500 hover:bg-green-500/30 flex items-center justify-center transition-all"
+                                title="Confirm"
+                              >
+                                {editLoading ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                              </button>
+                              <button
+                                onClick={() => setEditingUser(null)}
+                                className="w-7 h-7 rounded-full bg-red-500/20 text-red-500 hover:bg-red-500/30 flex items-center justify-center transition-all"
+                                title="Cancel"
+                              >
+                                <X size={12} />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => { setEditingUser(u.user_id); setEditPlan(u.plan); }}
+                              className="w-7 h-7 rounded-full bg-white/5 text-white/30 hover:bg-[#fa2d48]/20 hover:text-[#fa2d48] flex items-center justify-center transition-all opacity-0 group-hover:opacity-100"
+                              title="Edit plan"
+                            >
+                              <Edit3 size={12} />
+                            </button>
+                          )}
+                        </div>
                       </div>
                     ))}
                     {(!stats.user_plan_details || stats.user_plan_details.length === 0) && (
