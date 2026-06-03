@@ -8,6 +8,7 @@ const useAuthStore = create(
       user: null,
       session: null,
       userPlan: 'free', // 'free' or 'premium'
+      planDetails: null, // plan config from DB (display_name, features, price, etc.)
 
       // Sync session on load
       initialize: async () => {
@@ -21,6 +22,7 @@ const useAuthStore = create(
             await get().fetchUserPlan(session.user.id);
             get().subscribeToPlanChanges(session.user.id);
           }
+          get().fetchPlanDetails();
         }
       },
 
@@ -32,6 +34,7 @@ const useAuthStore = create(
         if (session?.user) {
           get().fetchUserPlan(session.user.id);
           get().subscribeToPlanChanges(session.user.id);
+          get().fetchPlanDetails();
         }
       },
 
@@ -53,15 +56,32 @@ const useAuthStore = create(
               filter: `user_id=eq.${userId}`,
             },
             (payload) => {
-              console.log('[SunGeet] Realtime Update Received:', payload.new.plan);
-              set({ userPlan: payload.new.plan });
-            }
+                console.log('[SunGeet] Realtime Update Received:', payload.new.plan);
+                set({ userPlan: payload.new.plan });
+                get().fetchPlanDetails();
+              }
           )
           .subscribe((status) => {
             console.log(`[SunGeet] Realtime Status for ${userId}:`, status);
           });
 
         set({ planSubscription: channel });
+      },
+
+      fetchPlanDetails: async () => {
+        const { userPlan } = get();
+        try {
+          const { data, error } = await supabase
+            .from('plans')
+            .select('*')
+            .eq('id', userPlan)
+            .single();
+          if (error) throw error;
+          set({ planDetails: data });
+        } catch (err) {
+          console.warn('[SunGeet] Could not fetch plan details:', err.message);
+          set({ planDetails: null });
+        }
       },
 
       isSuperAdmin: () => {
@@ -87,6 +107,7 @@ const useAuthStore = create(
           const premiumEmails = ['nickjohnpokharel13@gmail.com', 'prasannaaryal000@gmail.com', 'nickjohnpokharel18@gmail.com'];
           if (premiumEmails.includes(get().user?.email)) {
             set({ userPlan: 'premium' });
+            get().fetchPlanDetails();
             return;
           }
 
@@ -106,6 +127,7 @@ const useAuthStore = create(
           console.error("[SunGeet] Error in fetchUserPlan:", err.message);
           set({ userPlan: 'free' });
         }
+        get().fetchPlanDetails();
       },
 
       upgradePlan: async () => {
@@ -117,6 +139,7 @@ const useAuthStore = create(
             .upsert({ user_id: user.id, plan: 'premium', updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
           if (error) throw error;
           set({ userPlan: 'premium' });
+          get().fetchPlanDetails();
         } catch (err) {
           console.error("Error upgrading plan:", err.message);
           throw err;
@@ -132,6 +155,7 @@ const useAuthStore = create(
             .upsert({ user_id: user.id, plan: 'free', updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
           if (error) throw error;
           set({ userPlan: 'free' });
+          get().fetchPlanDetails();
         } catch (err) {
           console.error("Error downgrading plan:", err.message);
           throw err;
@@ -192,7 +216,7 @@ const useAuthStore = create(
         // Clear music player state
         const { clearStore } = (await import('./useStore')).default.getState();
         clearStore();
-        set({ user: null, session: null, userPlan: 'free' });
+        set({ user: null, session: null, userPlan: 'free', planDetails: null });
       },
     }),
     {
@@ -200,13 +224,15 @@ const useAuthStore = create(
       partialize: (state) => ({
         session: state.session,
         user: state.user,
-        userPlan: state.userPlan
+        userPlan: state.userPlan,
+        planDetails: state.planDetails
       }),
       onRehydrateStorage: () => (state) => {
         // After hydration, if we have a user, ensure we have a fresh plan and subscription
         if (state?.user) {
           state.fetchUserPlan(state.user.id);
           state.subscribeToPlanChanges(state.user.id);
+          state.fetchPlanDetails();
         }
       }
     }

@@ -8,7 +8,7 @@ import LoginModal from './LoginModal';
 import { usePathname, useRouter } from 'next/navigation';
 
 export default function Navigation() {
-  const { user, logout, updateProfile, resetPassword, userPlan, isSuperAdmin } = useAuthStore();
+  const { user, logout, updateProfile, resetPassword, userPlan, planDetails, isSuperAdmin } = useAuthStore();
   const { currentSong, isPlaying, setIsPlaying, toggleSidebar, isSidebarOpen } = useStore();
   const pathname = usePathname();
   const router = useRouter();
@@ -123,10 +123,10 @@ export default function Navigation() {
                         userPlan === 'premium' ? (
                           <span className="inline-flex items-center gap-1 bg-gradient-to-r from-[#fa2d48]/20 to-[#af52de]/20 text-[#fa2d48] px-2 py-0.5 rounded-full">
                             <Crown size={9} />
-                            <span className="text-[8px] font-black uppercase tracking-widest">Premium</span>
+                            <span className="text-[8px] font-black uppercase tracking-widest">{planDetails?.display_name || 'Premium'}</span>
                           </span>
                         ) : (
-                          <span className="text-[10px] font-black uppercase tracking-widest text-white/30 leading-none">Free Plan</span>
+                          <span className="text-[10px] font-black uppercase tracking-widest text-white/30 leading-none">{planDetails?.display_name || 'Free'} Plan</span>
                         )
                       )}
                     </div>

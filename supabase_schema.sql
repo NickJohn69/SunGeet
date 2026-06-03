@@ -85,7 +85,7 @@ CREATE POLICY "Admin can read all activity" ON public.user_activity
   FOR SELECT TO service_role USING (true);
 
 -- ════════════════════════════════════════════════════════════════
--- 3. ADMIN STATS RPC FUNCTION
+-- 4. ADMIN STATS RPC FUNCTION
 -- ════════════════════════════════════════════════════════════════
 
 CREATE OR REPLACE FUNCTION public.get_admin_stats()
@@ -139,7 +139,53 @@ BEGIN
     'free_users', c.free_users,
     'total_playlists', ps.total_playlists,
     'total_songs', ps.total_songs,
-    'user_plan_details', json_agg(
+-- ════════════════════════════════════════════════════════════════
+-- 2. PLANS TABLE (plan definitions for display/admin)
+-- ════════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS public.plans (
+  id TEXT PRIMARY KEY,
+  display_name TEXT NOT NULL,
+  price NUMERIC NOT NULL DEFAULT 0,
+  period TEXT NOT NULL DEFAULT '/month',
+  description TEXT DEFAULT '',
+  color TEXT NOT NULL DEFAULT 'from-white/10 to-white/5',
+  border_color TEXT NOT NULL DEFAULT 'border-white/10',
+  accent_color TEXT NOT NULL DEFAULT 'text-white/60',
+  features JSONB NOT NULL DEFAULT '[]',
+  badge TEXT DEFAULT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE public.plans ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Plans are publicly readable" ON public.plans
+  FOR SELECT TO anon, authenticated USING (true);
+
+INSERT INTO public.plans (id, display_name, price, period, description, color, border_color, accent_color, features, badge, sort_order)
+VALUES
+  ('free', 'Free', 0, 'forever', 'Get started with the essentials', 'from-white/10 to-white/5', 'border-white/10', 'text-white/60',
+   '[{"text": "Stream unlimited songs", "icon": "Music"}, {"text": "Create up to 3 playlists", "icon": "Headphones"}, {"text": "Max 10 songs per playlist", "icon": "Radio"}, {"text": "Search & discover music", "icon": "Zap"}]',
+   NULL, 0),
+  ('premium', 'Premium', 100, '/month', 'The ultimate music experience', 'from-[#fa2d48]/20 to-[#af52de]/10', 'border-[#fa2d48]/30', 'text-[#fa2d48]',
+   '[{"text": "Everything in Free", "icon": "Check"}, {"text": "Unlimited playlists", "icon": "Star"}, {"text": "High-fidelity audio (320kbps)", "icon": "Headphones"}, {"text": "Offline downloads", "icon": "Download"}, {"text": "Ad-free experience", "icon": "Zap"}, {"text": "Lyrics & visualizer", "icon": "Sparkles"}]',
+   'MOST POPULAR', 1)
+ON CONFLICT (id) DO UPDATE SET
+  display_name = EXCLUDED.display_name,
+  price = EXCLUDED.price,
+  period = EXCLUDED.period,
+  description = EXCLUDED.description,
+  color = EXCLUDED.color,
+  border_color = EXCLUDED.border_color,
+  accent_color = EXCLUDED.accent_color,
+  features = EXCLUDED.features,
+  badge = EXCLUDED.badge,
+  sort_order = EXCLUDED.sort_order;
+
+-- ════════════════════════════════════════════════════════════════
+-- 3. USER ACTIVITY TABLE (time tracking)
+-- ════════════════════════════════════════════════════════════════
       json_build_object(
         'user_id', ud.user_id,
         'email', ud.email,
@@ -159,7 +205,7 @@ END;
 $$;
 
 -- ════════════════════════════════════════════════════════════════
--- 4. GRANT EXECUTE PERMISSIONS
+-- 5. GRANT EXECUTE PERMISSIONS
 -- ════════════════════════════════════════════════════════════════
 
 GRANT EXECUTE ON FUNCTION public.get_admin_stats TO authenticated;
