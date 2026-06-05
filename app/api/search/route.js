@@ -1,120 +1,81 @@
-import { Innertube } from 'youtubei.js';
 import { NextResponse } from 'next/server';
 
-let yt = null;
+const DEEZER_API = 'https://api.deezer.com';
 
-async function getYT() {
-  if (!yt) {
-    yt = await Innertube.create({
-      lang: 'en',
-      location: 'US',
-      retrieve_player: false,
-    });
-  }
-  return yt;
+/**
+ * Format duration seconds into mm:ss string
+ */
+function formatDuration(seconds) {
+  if (!seconds) return '0:00';
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
 }
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const q = searchParams.get('q');
-  const type = searchParams.get('type') || 'video';
+  const type = searchParams.get('type') || 'track';
 
   if (!q) {
     return NextResponse.json({ error: 'Query is required' }, { status: 400 });
   }
 
   try {
-    const youtube = await getYT();
-
-    // Artist Search (Channels)
+    // ── Artist Search ──────────────────────────────────────────
     if (type === 'artist') {
-      const results = await youtube.search(q, { type: 'channel' });
-      // Filter for Official Artist Channels or Verified Channels
-      const channels = (results.channels || [])
-        .filter(c => {
-          const badges = c.author?.badges || [];
-          return badges.some(b => 
-            b.tooltip?.includes('Official Artist Channel') || 
-            b.label?.includes('Official Artist Channel') ||
-            b.style === 'BADGE_STYLE_TYPE_VERIFIED_ARTIST' ||
-            b.icon_type === 'OFFICIAL_ARTIST'
-          );
-        })
-        .map(c => {
-          let thumbnail = '';
-          
-          // Try multiple paths to find the thumbnail
-          const thumbs = c.author?.thumbnails || c.thumbnails || (c.thumbnail?.thumbnails) || [];
-          
-          if (thumbs && thumbs.length > 0) {
-            thumbnail = thumbs[thumbs.length - 1].url || thumbs[0].url;
-          } else if (c.thumbnail?.url) {
-            thumbnail = c.thumbnail.url;
-          }
-          
-          // Ensure protocol
-          if (thumbnail && thumbnail.startsWith('//')) {
-            thumbnail = `https:${thumbnail}`;
-          }
-          
-          return {
-            id: c.id,
-            name: c.author?.name || c.title?.text || 'Unknown Artist',
-            thumbnail: thumbnail,
-            subscribers: c.subscriber_count?.text || c.subscribers?.text || 'Artist',
-          };
-        });
+      const res = await fetch(
+        `${DEEZER_API}/search/artist?q=${encodeURIComponent(q)}&limit=20`,
+        { signal: AbortSignal.timeout(8000) }
+      );
       
-      // If filtering is too strict, return the top result regardless of badges
-      if (channels.length === 0 && results.channels?.length > 0) {
-         const top = results.channels[0];
-         let thumbnail = '';
-         const thumbs = top.author?.thumbnails || top.thumbnails || [];
-         if (thumbs.length > 0) thumbnail = thumbs[thumbs.length - 1].url;
-         
-         return NextResponse.json([{
-            id: top.id,
-            name: top.author?.name || top.title?.text || 'Unknown Artist',
-            thumbnail: thumbnail.startsWith('//') ? `https:${thumbnail}` : thumbnail,
-            subscribers: top.subscriber_count?.text || 'Artist'
-         }]);
-      }
-      
-      return NextResponse.json(channels);
+      if (!res.ok) throw new Error(`Deezer API responded with ${res.status}`);
+      const data = await res.json();
+
+      const artists = (data.data || []).map(artist => ({
+        id: artist.id,
+        name: artist.name,
+        thumbnail: artist.picture_big || artist.picture_medium || artist.picture_xl || '',
+        subscribers: artist.nb_fan
+          ? `${(artist.nb_fan / 1000000).toFixed(1)}M fans`
+          : 'Artist',
+        tracklist: artist.tracklist || '',
+        deezerLink: artist.link || '',
+      }));
+
+      return NextResponse.json(artists);
     }
 
-    // Default Video/Song Search
-    const results = await youtube.search(q, { type: 'video' });
-    const videos = (results.videos || []).slice(0, 30).map(v => {
-      const videoId = v.id || v.video_id || '';
-      const title = v.title?.text || v.title?.toString() || 'Unknown Title';
-      const authorName = v.author?.name || v.author?.text || 'Unknown Artist';
-      
-      let thumbnail = '';
-      if (v.thumbnails && v.thumbnails.length > 0) {
-        thumbnail = v.thumbnails[v.thumbnails.length - 1].url || v.thumbnails[0].url;
-      } else if (v.thumbnail?.url) {
-        thumbnail = v.thumbnail.url;
-      } else {
-        thumbnail = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
-      }
+    // ── Default Track/Song Search ──────────────────────────────
+    const res = await fetch(
+      `${DEEZER_API}/search?q=${encodeURIComponent(q)}&limit=30`,
+      { signal: AbortSignal.timeout(8000) }
+    );
+    
+    if (!res.ok) throw new Error(`Deezer API responded with ${res.status}`);
+    const data = await res.json();
 
-      const durationText = v.duration?.text || v.duration?.toString() || '0:00';
-      const durationSeconds = v.duration?.seconds || 0;
+    const tracks = (data.data || [])
+      .filter(t => t.preview) // Only include tracks that have a preview URL
+      .map(track => ({
+        id: String(track.id),
+        title: track.title_short || track.title || 'Unknown Title',
+        thumbnail: track.album?.cover_big || track.album?.cover_medium || track.album?.cover_xl || '',
+        duration: formatDuration(track.duration),
+        durationSeconds: track.duration || 0,
+        author: track.artist?.name || 'Unknown Artist',
+        // Deezer-specific fields
+        previewUrl: track.preview, // 30-second MP3 preview URL
+        album: track.album?.title || '',
+        artistId: track.artist?.id || null,
+        artistPicture: track.artist?.picture_big || track.artist?.picture_medium || '',
+        albumCover: track.album?.cover_xl || track.album?.cover_big || '',
+        deezerLink: track.link || '',
+      }));
 
-      return {
-        id: videoId,
-        title,
-        thumbnail,
-        duration: durationText,
-        durationSeconds,
-        author: authorName,
-      };
-    }).filter(v => v.id);
-
-    return NextResponse.json(videos);
+    return NextResponse.json(tracks);
   } catch (error) {
-    console.error("Search error:", error);
-    return NextResponse.json({ error: 'Failed to search videos' }, { status: 500 });
+    console.error("Deezer search error:", error);
+    return NextResponse.json({ error: 'Failed to search' }, { status: 500 });
   }
 }
