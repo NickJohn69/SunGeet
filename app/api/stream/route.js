@@ -1,54 +1,54 @@
 export const runtime = 'nodejs';
 
-const DEEZER_API = 'https://api.deezer.com';
-
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const id = searchParams.get('id')?.trim();
 
   if (!id) {
-    return new Response(JSON.stringify({ error: 'Track ID required' }), { 
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return new Response(JSON.stringify({ error: 'Video ID required' }), { status: 400 });
   }
 
   try {
-    // Fetch track info from Deezer to get the preview URL
-    const trackRes = await fetch(`${DEEZER_API}/track/${id}`, {
-      signal: AbortSignal.timeout(8000),
+    const playerRes = await fetch('https://www.youtube.com/youtubei/v1/player', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        context: {
+          client: {
+            clientName: 'TVHTML5',
+            clientVersion: '7.20230405.08.01',
+            hl: 'en',
+            gl: 'US',
+          }
+        },
+        videoId: id,
+        playbackContext: { contentCheckOk: true, racyCheckOk: true },
+      }),
     });
 
-    if (!trackRes.ok) throw new Error(`Deezer API responded with ${trackRes.status}`);
-    
-    const track = await trackRes.json();
+    if (!playerRes.ok) throw new Error(`YouTube API responded with ${playerRes.status}`);
 
-    if (!track.preview) {
-      throw new Error('No preview URL available for this track');
+    const data = await playerRes.json();
+
+    if (data.playabilityStatus?.status !== 'OK') {
+      throw new Error(data.playabilityStatus?.reason || 'Video not available');
     }
 
-    // Proxy the Deezer preview MP3 to avoid CORS issues
-    const audioRes = await fetch(track.preview, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      },
-    });
+    const formats = data.streamingData?.adaptiveFormats || [];
+    const audioFormats = formats
+      .filter(f => f.mimeType?.startsWith('audio/'))
+      .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
 
-    if (!audioRes.ok) throw new Error(`Deezer preview stream responded with ${audioRes.status}`);
+    const format =
+      audioFormats.find(f => f.mimeType?.includes('mp4')) ||
+      audioFormats[0];
 
-    // Stream the audio back to the client
-    return new Response(audioRes.body, {
-      headers: {
-        'Content-Type': 'audio/mpeg',
-        'Content-Length': audioRes.headers.get('Content-Length') || '',
-        'Accept-Ranges': 'bytes',
-        'Cache-Control': 'public, max-age=3600',
-        'Access-Control-Allow-Origin': '*',
-      },
-    });
+    if (!format?.url) throw new Error('No audio stream URL found');
+
+    return Response.redirect(format.url, 307);
   } catch (error) {
     console.error("Stream error:", error.message);
-    return new Response(JSON.stringify({ error: 'Failed to stream', details: error.message }), {
+    return new Response(JSON.stringify({ error: 'Failed to stream' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     });

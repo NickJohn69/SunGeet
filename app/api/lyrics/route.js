@@ -5,7 +5,7 @@ const LRCLIB_HEADERS = {
 };
 
 /**
- * Clean title noise (parenthetical tags, suffixes, etc.)
+ * Clean YouTube title noise in one pass with a single combined regex.
  */
 function cleanTitle(raw) {
   return raw
