@@ -228,8 +228,8 @@ function YTStreamPlayer({ currentSong, isPlaying, setIsPlaying, volume, setVolum
 
     const onError = (e) => {
       const audio = audioRef.current;
-      if (!audio) return;
-      const errorMsg = audio.error ? `Code: ${audio.error.code}, Message: ${audio.error.message}` : 'Unknown error';
+      if (!audio || !audio.error) return;
+      const errorMsg = `Code: ${audio.error.code}, Message: ${audio.error.message}`;
       console.error('Audio stream error details:', errorMsg);
       
       // If the error happened immediately, try to reload once before skipping
@@ -292,8 +292,15 @@ function YTStreamPlayer({ currentSong, isPlaying, setIsPlaying, volume, setVolum
       currentSongIdRef.current = currentSong.id;
       const audio = audioRef.current;
       
-      // Stop current playback cleanly
+      // Stop current playback cleanly and reset source to prevent ghost events
       audio.pause();
+      try {
+        audio.currentTime = 0;
+      } catch (e) {}
+      audio.src = '';
+      try {
+        audio.load();
+      } catch (e) {}
       
       // Clear progress immediately to avoid UI jumps
       setProgress(0);
@@ -303,6 +310,9 @@ function YTStreamPlayer({ currentSong, isPlaying, setIsPlaying, volume, setVolum
       const fetchAudioUrl = async () => {
         try {
           const res = await fetch(`/api/stream?q=${currentSong.id}&_t=${Date.now()}`);
+          if (!res.ok) {
+            throw new Error(`API returned status ${res.status}`);
+          }
           const data = await res.json();
           const url = data.chosen?.url || data.audioUrl || (data.formats && data.formats[0]?.url);
           if (!url) {
@@ -325,18 +335,18 @@ function YTStreamPlayer({ currentSong, isPlaying, setIsPlaying, volume, setVolum
           audio.src = proxyUrl;
           audio.load();
           
-          // Wait for canplay event before attempting playback
-          const onCanPlay = () => {
-            audio.removeEventListener('canplay', onCanPlay);
-            if (isPlayingRef.current && currentSongIdRef.current === currentSong.id) {
-              audio.play().catch((err) => {
-                console.warn('Auto-play prevented:', err.message);
-              });
-            }
-          };
-          audio.addEventListener('canplay', onCanPlay);
+          if (isPlayingRef.current && currentSongIdRef.current === currentSong.id) {
+            audio.play().catch((err) => {
+              console.warn('Auto-play prevented:', err.message);
+            });
+          }
         } catch (e) {
           console.error('Failed to fetch audio URL:', e);
+          setTimeout(() => {
+            if (currentSongIdRef.current === currentSong.id) {
+              useStore.getState().playNext();
+            }
+          }, 4000);
         }
       };
       fetchAudioUrl();
