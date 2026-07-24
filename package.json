@@ -9,6 +9,8 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@clerk/nextjs": "^7.5.2",
+    "@distube/ytdl-core": "^4.16.12",
     "@supabase/supabase-js": "^2.106.2",
     "framer-motion": "^12.38.0",
     "localforage": "^1.10.0",
@@ -17,7 +19,7 @@
     "next": "16.2.6",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "youtube-dl-exec": "^3.1.6",
+    "youtube-dl-exec": "^3.1.7",
     "youtubei.js": "^17.0.1",
     "yt-search": "^2.13.1",
     "yt-stream": "^1.7.4",

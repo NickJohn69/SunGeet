@@ -1,9 +1,19 @@
+
+import { Innertube, UniversalCache } from 'youtubei.js';
 import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
 
-// Use YouTube's own InnerTube player API — same approach as stream
-const INNERTUBE_PLAYER_URL = 'https://www.youtube.com/youtubei/v1/player';
+let yt = null;
+async function getYT() {
+  if (!yt) {
+    yt = await Innertube.create({
+        cache: new UniversalCache(false),
+        generate_session_store: true
+    });
+  }
+  return yt;
+}
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
@@ -13,69 +23,36 @@ export async function GET(request) {
   if (!id) return NextResponse.json({ error: 'Video ID required' }, { status: 400 });
 
   try {
-    // 1. Request video info using TVHTML5 client
-    const playerRes = await fetch(INNERTUBE_PLAYER_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        context: {
-          client: {
-            clientName: 'TVHTML5',
-            clientVersion: '7.20230405.08.01',
-            hl: 'en',
-            gl: 'US',
-          }
-        },
-        videoId: id,
-        playbackContext: {
-          contentCheckOk: true,
-          racyCheckOk: true,
-        },
-      }),
-    });
+    const youtube = await getYT();
+    const info = await youtube.getInfo(id);
+    const format = info.chooseFormat({ type: 'audio', quality: 'best' });
 
-    if (!playerRes.ok) throw new Error(`InnerTube responded with ${playerRes.status}`);
-
-    const data = await playerRes.json();
-
-    if (data.playabilityStatus?.status !== 'OK') {
-      throw new Error(data.playabilityStatus?.reason || 'Video not available');
+    if (!format || !format.url) {
+      throw new Error('No playable audio format found');
     }
 
-    const formats = data.streamingData?.adaptiveFormats || [];
-
-    // 2. Find best audio format
-    const audioFormats = formats
-      .filter(f => f.mimeType?.startsWith('audio/'))
-      .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
-
-    const format =
-      audioFormats.find(f => f.mimeType?.includes('mp4')) ||
-      audioFormats[0];
-
-    if (!format?.url) throw new Error('No audio stream URL found');
-
-    // 3. Proxy the stream for download
     const streamRes = await fetch(format.url, {
       headers: { 'User-Agent': 'Mozilla/5.0' },
     });
 
     if (!streamRes.ok) throw new Error(`YouTube stream responded with ${streamRes.status}`);
 
+    const mimeType = format.mime_type?.split(';')[0] || 'audio/mp4';
+    const ext = mimeType.includes('mpeg') ? 'mp3' : 
+                mimeType.includes('webm') ? 'webm' : 'm4a';
+
     return new Response(streamRes.body, {
       headers: {
-        'Content-Type': 'audio/mp4',
-        'Content-Disposition': `attachment; filename="${encodeURIComponent(title)}.m4a"`,
-        'Content-Length': streamRes.headers.get('Content-Length'),
+        'Content-Type': mimeType,
+        'Content-Disposition': `attachment; filename="${encodeURIComponent(title)}.${ext}"`,
+        'Content-Length': streamRes.headers.get('Content-Length') || '',
       }
     });
 
   } catch (error) {
     console.error("Download error:", error);
     return NextResponse.json({ 
-      error: 'Failed to download',
+      error: 'Failed to download', 
       details: error.message 
     }, { status: 500 });
   }

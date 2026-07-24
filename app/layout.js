@@ -7,6 +7,7 @@ import Sidebar from '../components/Sidebar';
 import Lyrics from '../components/Lyrics';
 import ActivityTracker from '../components/ActivityTracker';
 import useAuthStore from '../store/authStore';
+import { ClerkProvider, SignInButton, SignUpButton, Show, UserButton } from "@clerk/nextjs";
 import "./globals.css";
 
 export default function RootLayout({ children }) {
@@ -47,16 +48,32 @@ export default function RootLayout({ children }) {
         <meta name="theme-color" content="#18181b" />
       </head>
       <body className="antialiased bg-background text-foreground">
-        <div className="flex h-screen overflow-hidden">
-          <Sidebar />
-          <div className="flex-1 overflow-y-auto no-scrollbar pb-24">
-            <Navigation />
-            {children}
+        <ClerkProvider>
+          <div className="fixed top-4 right-4 z-[100] flex items-center gap-3 bg-white/5 backdrop-blur-md p-2 rounded-full border border-white/10 shadow-2xl">
+            <Show when="signed-out">
+              <SignInButton mode="modal">
+                <button className="px-5 py-2 rounded-full bg-[#fa2d48] text-white text-xs font-black uppercase tracking-widest hover:scale-105 active:scale-95 transition-all">Sign In</button>
+              </SignInButton>
+              <SignUpButton mode="modal">
+                <button className="px-5 py-2 rounded-full bg-white/10 text-white text-xs font-black uppercase tracking-widest hover:bg-white/20 active:scale-95 transition-all">Sign Up</button>
+              </SignUpButton>
+            </Show>
+            <Show when="signed-in">
+              <UserButton appearance={{ elements: { userButtonAvatarBox: 'w-10 h-10' } }} />
+            </Show>
           </div>
-        </div>
-        <Player />
-        <Lyrics />
-        <ActivityTracker />
+
+          <div className="flex h-screen overflow-hidden">
+            <Sidebar />
+            <div className="flex-1 overflow-y-auto no-scrollbar pb-24">
+              <Navigation />
+              {children}
+            </div>
+          </div>
+          <Player />
+          <Lyrics />
+          <ActivityTracker />
+        </ClerkProvider>
       </body>
     </html>
   );

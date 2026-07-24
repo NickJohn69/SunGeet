@@ -1,0 +1,5 @@
+﻿0 audio/mp4; codecs="mp4a.40.2" false 130677
+1 audio/webm; codecs="opus" false 49496
+2 audio/webm; codecs="opus" false 65508
+3 audio/webm; codecs="opus" false 136544
+BEST: audio/mp4; codecs="mp4a.40.2" false

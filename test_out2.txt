@@ -1,0 +1,4 @@
+﻿url: false
+decipher_url: false
+cipher: false
+keys: [ 'url', 'signature_cipher', 'cipher' ]

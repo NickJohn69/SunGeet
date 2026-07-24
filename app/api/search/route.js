@@ -1,6 +1,8 @@
 import { Innertube } from 'youtubei.js';
 import { NextResponse } from 'next/server';
 
+export const runtime = 'nodejs';
+
 let yt = null;
 
 async function getYT() {
