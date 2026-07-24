@@ -1,7 +1,5 @@
 'use client';
 import { supabase } from '../lib/supabase';
-
-
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Mic2, Maximize2, Repeat, Shuffle, ListPlus, X, Plus } from 'lucide-react';
 import useStore from '../store/useStore';
@@ -35,13 +33,46 @@ function loadYTApi() {
 }
 
 // ── Shared UI ──────────────────────────────────────────────────
-function PlayerBar({ currentSong, isPlaying, progress, duration, isSidebarOpen, onToggleLyrics, onPlayPause, onPrev, onNext, onShuffle, onRepeat, shuffle, repeat, onListAdd, onSeek, volume, onVolumeChange, onToggleMute, children }) {
+function PlayerBar({ 
+  currentSong, 
+  isPlaying, 
+  progress, 
+  duration, 
+  isSidebarOpen, 
+  onToggleLyrics, 
+  onPlayPause, 
+  onPrev, 
+  onNext, 
+  onShuffle, 
+  onRepeat, 
+  shuffle, 
+  repeat, 
+  onListAdd, 
+  onSeekStart,
+  onSeekChange,
+  onSeekEnd, 
+  volume, 
+  onVolumeChange, 
+  onToggleMute, 
+  children 
+}) {
   return (
     <div className={`fixed bottom-0 right-0 z-50 bg-[#1c1c1e]/90 backdrop-blur-2xl border-t border-white/5 px-6 py-3 select-none pointer-events-auto shadow-[0_-10px_40px_rgba(0,0,0,0.5)] transition-all duration-500 
       ${isSidebarOpen ? 'left-0 lg:left-64' : 'left-0 lg:left-20'}`}>
       <div className="absolute top-0 left-0 right-0 h-0.5 bg-white/10 lg:hidden overflow-hidden">
         <div className="h-full bg-[#fa2d48] transition-all" style={{ width: `${(progress/(duration||1))*100}%` }} />
-        <input type="range" min="0" max={duration || 100} value={progress} onChange={onSeek} className="absolute inset-0 w-full opacity-0 cursor-pointer z-10" />
+        <input 
+          type="range" 
+          min="0" 
+          max={duration || 100} 
+          value={progress} 
+          onMouseDown={onSeekStart}
+          onTouchStart={onSeekStart}
+          onChange={onSeekChange}
+          onMouseUp={onSeekEnd}
+          onTouchEnd={onSeekEnd}
+          className="absolute inset-0 w-full opacity-0 cursor-pointer z-10" 
+        />
       </div>
       <div className="max-w-[1800px] mx-auto grid grid-cols-2 lg:grid-cols-3 items-center gap-4 h-full relative">
         <div onClick={onToggleLyrics} className="flex items-center gap-3 min-w-0 cursor-pointer group/info">
@@ -59,7 +90,7 @@ function PlayerBar({ currentSong, isPlaying, progress, duration, isSidebarOpen, 
             <button onClick={onShuffle} className={`hidden lg:block transition-colors ${shuffle ? 'text-[#fa2d48]' : 'text-white/30 hover:text-white'}`}><Shuffle size={16} /></button>
             <div className="flex items-center gap-4 lg:gap-7">
               <button onClick={onPrev} className="hidden lg:block text-white/40 hover:text-white transition-all transform active:scale-90"><SkipBack size={24} fill="currentColor" /></button>
-              <button onClick={onPlayPause} className="w-10 h-10 lg:w-12 lg:h-12 flex items-center justify-center text-white hover:scale-110 active:scale-90 transition-all border border-white/5 rounded-full bg-white/5">
+              <button onClick={onPlayPause} className="w-10 h-10 lg:w-12 lg:h-12 flex items-center justify-center text-white hover:scale-110 active:scale-95 transition-all border border-white/5 rounded-full bg-white/5">
                 {isPlaying ? <Pause size={28} fill="white" /> : <Play size={28} fill="white" className="ml-1" />}
               </button>
               <button onClick={onNext} className="text-white/40 hover:text-white transition-all transform active:scale-90"><SkipForward size={24} fill="currentColor" /></button>
@@ -72,7 +103,18 @@ function PlayerBar({ currentSong, isPlaying, progress, duration, isSidebarOpen, 
           <div className="hidden lg:flex items-center gap-3 w-full max-w-md">
             <span className="text-[10px] font-bold text-white/20 w-8 text-right tabular-nums">{formatTime(progress)}</span>
             <div className="relative flex-1 h-1 flex items-center group/scrub">
-              <input type="range" min="0" max={duration || 100} value={progress} onChange={onSeek} className="absolute inset-0 w-full opacity-0 cursor-pointer z-10" />
+              <input 
+                type="range" 
+                min="0" 
+                max={duration || 100} 
+                value={progress} 
+                onMouseDown={onSeekStart}
+                onTouchStart={onSeekStart}
+                onChange={onSeekChange}
+                onMouseUp={onSeekEnd}
+                onTouchEnd={onSeekEnd}
+                className="absolute inset-0 w-full opacity-0 cursor-pointer z-10" 
+              />
               <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden">
                 <div className="h-full bg-white group-hover/scrub:bg-[#fa2d48] transition-colors" style={{ width: `${(progress/(duration||1))*100}%` }} />
               </div>
@@ -106,12 +148,24 @@ function YTStreamPlayer({ currentSong, isPlaying, setIsPlaying, volume, setVolum
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [mounted, setMounted] = useState(false);
-  const [prevVolume, setPrevVolume] = useState(1);
   const currentSongIdRef = useRef(null);
   const isPlayingRef = useRef(false);
 
+  // Smooth scrubbing state and refs to bypass closures
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const [scrubValue, setScrubValue] = useState(0);
+  const isScrubbingRef = useRef(false);
+  const prevVolumeRef = useRef(1);
+
   useEffect(() => { setMounted(true); }, []);
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
+
+  // Keep track of non-mute volume for toggle-mute fallback
+  useEffect(() => {
+    if (volume > 0) {
+      prevVolumeRef.current = volume;
+    }
+  }, [volume]);
 
   // Audio element initialization
   useEffect(() => {
@@ -130,7 +184,11 @@ function YTStreamPlayer({ currentSong, isPlaying, setIsPlaying, volume, setVolum
     const onTimeUpdate = () => {
       const currentTime = audio.currentTime || 0;
       const dur = audio.duration || 0;
-      setProgress(currentTime);
+      
+      // Update normal progress only when NOT scrubbing
+      if (!isScrubbingRef.current) {
+        setProgress(currentTime);
+      }
       if (dur > 0) setDuration(dur);
 
       if ('mediaSession' in navigator && dur > 0) {
@@ -334,34 +392,83 @@ function YTStreamPlayer({ currentSong, isPlaying, setIsPlaying, volume, setVolum
     };
   }, [currentSong, playNext, playPrev, setIsPlaying, isPlaying]);
 
+  // Zero-dependency keyboard shortcut handler
   const handleKeyDown = useCallback((e) => {
-    const tag = e.target.tagName.toLowerCase();
-    if (tag === 'input' || tag === 'textarea') return;
-    switch (e.code) {
-      case 'Space': e.preventDefault(); setIsPlaying(!isPlaying); break;
-      case 'ArrowRight': if (audioRef.current) audioRef.current.currentTime = Math.min(audioRef.current.currentTime + 5, duration); break;
-      case 'ArrowLeft': if (audioRef.current) audioRef.current.currentTime = Math.max(audioRef.current.currentTime - 5, 0); break;
-      case 'ArrowUp': e.preventDefault(); setVolume(Math.min(volume + 0.1, 1)); break;
-      case 'ArrowDown': e.preventDefault(); setVolume(Math.max(volume - 0.1, 0)); break;
-      case 'KeyM': if (volume > 0) { setPrevVolume(volume); setVolume(0); } else { setVolume(prevVolume || 1); } break;
-      case 'KeyL': toggleLyricsMode(); break;
+    const tag = e.target?.tagName?.toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || e.target?.isContentEditable) return;
+
+    const store = useStore.getState();
+    const key = e.key;
+
+    switch (key) {
+      case ' ':
+        e.preventDefault();
+        store.setIsPlaying(!store.isPlaying);
+        break;
+      case 'ArrowRight':
+        if (audioRef.current) {
+          audioRef.current.currentTime = Math.min(audioRef.current.currentTime + 5, audioRef.current.duration || 0);
+        }
+        break;
+      case 'ArrowLeft':
+        if (audioRef.current) {
+          audioRef.current.currentTime = Math.max(audioRef.current.currentTime - 5, 0);
+        }
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        store.setVolume(Math.min(store.volume + 0.1, 1));
+        break;
+      case 'ArrowDown':
+        e.preventDefault();
+        store.setVolume(Math.max(store.volume - 0.1, 0));
+        break;
+      case 'm':
+      case 'M':
+        if (store.volume > 0) {
+          store.setVolume(0);
+        } else {
+          store.setVolume(prevVolumeRef.current || 1);
+        }
+        break;
+      case 'l':
+      case 'L':
+        store.toggleLyricsMode();
+        break;
+      default:
+        break;
     }
-  }, [isPlaying, volume, duration, prevVolume, setIsPlaying, setVolume, toggleLyricsMode]);
+  }, []);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
-  const handleSeek = (e) => {
-    const t = Number(e.target.value);
-    if (audioRef.current) audioRef.current.currentTime = t;
+  // Scrubbing Handlers
+  const handleSeekStart = () => {
+    isScrubbingRef.current = true;
+    setIsScrubbing(true);
+    setScrubValue(progress);
+  };
+
+  const handleSeekChange = (e) => {
+    setScrubValue(Number(e.target.value));
+  };
+
+  const handleSeekEnd = () => {
+    if (audioRef.current) {
+      audioRef.current.currentTime = scrubValue;
+      setProgress(scrubValue);
+    }
+    isScrubbingRef.current = false;
+    setIsScrubbing(false);
   };
 
   if (!mounted) return null;
 
   return (
-    <PlayerBar {...{ currentSong, isPlaying, progress, duration, isSidebarOpen, shuffle, repeat, volume }}
+    <PlayerBar {...{ currentSong, isPlaying, progress: isScrubbing ? scrubValue : progress, duration, isSidebarOpen, shuffle, repeat, volume }}
       onToggleLyrics={toggleLyricsMode}
       onPlayPause={() => setIsPlaying(!isPlaying)}
       onPrev={playPrev}
@@ -369,9 +476,11 @@ function YTStreamPlayer({ currentSong, isPlaying, setIsPlaying, volume, setVolum
       onShuffle={toggleShuffle}
       onRepeat={toggleRepeat}
       onListAdd={() => setLocalAddingToPlaylist(currentSong)}
-      onSeek={handleSeek}
+      onSeekStart={handleSeekStart}
+      onSeekChange={handleSeekChange}
+      onSeekEnd={handleSeekEnd}
       onVolumeChange={setVolume}
-      onToggleMute={() => { if (volume > 0) { setPrevVolume(volume); setVolume(0); } else { setVolume(prevVolume || 1); } }}
+      onToggleMute={() => { if (volume > 0) { setVolume(0); } else { setVolume(prevVolumeRef.current || 1); } }}
     >
       {localAddingToPlaylist && (
         <PlaylistPicker song={localAddingToPlaylist} onClose={() => setLocalAddingToPlaylist(null)} userPlaylists={userPlaylists} addSongToPlaylist={addSongToPlaylist} />

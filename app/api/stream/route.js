@@ -2,15 +2,14 @@
 import { NextResponse } from 'next/server';
 import { execFileSync } from 'child_process';
 import path from 'path';
-import { fileURLToPath } from 'url';
 
 export const runtime = 'nodejs';
 
-// Resolve the yt-dlp binary path relative to the project root
+// Helper to resolve the yt-dlp binary path dynamically based on OS
 function getYtDlpPath() {
-  // In Next.js, process.cwd() is the project root
-  const binPath = path.join(process.cwd(), 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp.exe');
-  return binPath;
+  const isWin = process.platform === 'win32';
+  const binaryName = isWin ? 'yt-dlp.exe' : 'yt-dlp';
+  return path.join(process.cwd(), 'node_modules', 'youtube-dl-exec', 'bin', binaryName);
 }
 
 /**
@@ -27,7 +26,58 @@ export async function GET(request) {
 
   const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
-  // Strategy 1: yt-dlp binary via child_process (most reliable)
+  // Strategy 1: @distube/ytdl-core (Pure JS, very robust, deciphering is fully supported client-side)
+  try {
+    const ytdl = await import('@distube/ytdl-core');
+    const info = await ytdl.default.getInfo(videoId);
+    const audioFormats = ytdl.default.filterFormats(info.formats, 'audioonly');
+
+    if (audioFormats.length > 0) {
+      // Find m4a container format or get the highest audio format
+      const chosen = audioFormats.find(f => f.container === 'm4a') || audioFormats[0];
+      return NextResponse.json({
+        videoId,
+        audioUrl: chosen.url,
+        chosen: {
+          url: chosen.url,
+          mimeType: chosen.mimeType || `audio/${chosen.container || 'mp4'}`,
+          bitrate: chosen.audioBitrate || chosen.bitrate,
+        },
+        durationSeconds: parseInt(info.videoDetails.lengthSeconds) || 0,
+      });
+    }
+    console.warn('[stream] @distube/ytdl-core returned no audio formats for', videoId);
+  } catch (err) {
+    console.error('[stream] @distube/ytdl-core failed:', err.message);
+  }
+
+  // Strategy 2: youtubei.js getInfo (using full getInfo to decrypt signature ciphers)
+  try {
+    const { Innertube } = await import('youtubei.js');
+    const yt = await Innertube.create({ lang: 'en', location: 'US' });
+    const info = await yt.getInfo(videoId);
+    
+    // Choose format decrypts the signature cipher and returns a playable URL
+    const chosen = info.chooseFormat({ type: 'audio', quality: 'best' });
+
+    if (chosen && chosen.url) {
+      return NextResponse.json({
+        videoId,
+        audioUrl: chosen.url,
+        chosen: {
+          url: chosen.url,
+          mimeType: chosen.mime_type,
+          bitrate: chosen.bitrate,
+        },
+        durationSeconds: info.basic_info?.duration || 0,
+      });
+    }
+    console.warn('[stream] youtubei.js chosen format has no URL for', videoId);
+  } catch (err) {
+    console.error('[stream] youtubei.js failed:', err.message);
+  }
+
+  // Strategy 3: yt-dlp binary spawn (working in localhost but fallback config for deployment platform check)
   try {
     const binPath = getYtDlpPath();
     const stdout = execFileSync(binPath, [
@@ -66,35 +116,7 @@ export async function GET(request) {
     console.error('[stream] yt-dlp failed:', err.message);
   }
 
-  // Strategy 2: youtubei.js getBasicInfo
-  try {
-    const { Innertube } = await import('youtubei.js');
-    const yt = await Innertube.create({ lang: 'en', location: 'US' });
-    const info = await yt.getBasicInfo(videoId);
-    const formats = info.streaming_data?.adaptive_formats || [];
-    const audioFormats = formats
-      .filter(f => f.mime_type?.startsWith('audio/') && f.url)
-      .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
-
-    if (audioFormats.length > 0) {
-      const chosen = audioFormats.find(f => f.mime_type?.includes('mp4')) || audioFormats[0];
-      return NextResponse.json({
-        videoId,
-        audioUrl: chosen.url,
-        chosen: {
-          url: chosen.url,
-          mimeType: chosen.mime_type,
-          bitrate: chosen.bitrate,
-        },
-        durationSeconds: info.basic_info?.duration,
-      });
-    }
-    console.warn('[stream] youtubei.js returned no audio formats for', videoId);
-  } catch (err) {
-    console.error('[stream] youtubei.js failed:', err.message);
-  }
-
-  // Strategy 3: yt-dlp get-url (just the URL, no JSON)
+  // Strategy 4: yt-dlp get-url format extraction
   try {
     const binPath = getYtDlpPath();
     const stdout = execFileSync(binPath, [
